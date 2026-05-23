@@ -1,0 +1,9 @@
+{
+  "name": "discord-clone-server",
+  "version-string": "1.0.0",
+  "dependencies": [
+    "asio",
+    "nlohmann-json",
+    "sqlite3"
+  ]
+}
