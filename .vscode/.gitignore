@@ -1,0 +1,5 @@
+# Ignore all VS Code workspace settings
+*
+
+# But not this file
+!.gitignore
