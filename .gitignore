@@ -1,0 +1,17 @@
+# Chặn thư mục build của CMake
+/build/
+build/
+
+# Chặn cấu hình riêng của VS Code
+/.vscode/
+.vscode/
+
+# Chặn toàn bộ thư mục thư viện vcpkg
+/vcpkg/
+vcpkg/
+
+# Chặn các file sinh ra khi biên dịch và debug của MSVC (cl.exe)
+*.pdb
+*.exe
+*.obj
+*.ilk
