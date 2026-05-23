@@ -21,3 +21,38 @@ Chatties brings people together in a dynamic, secure, and scalable environment. 
 ---
 
 Start chatting, sharing, and connecting — all in one place with **Chatties**!
+[Architecture Overview]
+
+```mermaid
+graph TD
+	subgraph CLIENT
+		A[Qt / C# / SQLite]
+	end
+	subgraph SERVER
+		B[C++ Asio + OpenSSL]
+	end
+	subgraph DB
+		C[SQL Server & Redis]
+	end
+	subgraph ROUTING
+		D[VOICE/VIDEO ROUTING (PortAudio / FFmpeg)]
+	end
+	A -- HTTPS / WebSockets / TCP --> B
+	B -- DB Access --> C
+	A -- UDP / WebRTC / Coturn --> D
+	B -- Media Routing --> D
+```
+
+Textual Structure:
+
+	[ CLIENT: Qt / C# / SQLite ]
+		   │
+		   ├─( HTTPS / WebSockets / TCP )─► [ SERVER: C++ Asio + OpenSSL ] ──► [ DB: SQL Server & Redis ]
+		   │                                       │
+		   └─( UDP / WebRTC / Coturn ) ────────────┴─► [ VOICE/VIDEO ROUTING ] (PortAudio / FFmpeg)
+
+This diagram represents the high-level architecture:
+- **Client**: Built with Qt or C#, using SQLite for local storage.
+- **Server**: C++ backend using Asio and OpenSSL for secure communication.
+- **Database**: SQL Server and Redis for persistent and in-memory data.
+- **Voice/Video Routing**: Handles media streams using PortAudio and FFmpeg, with UDP/WebRTC/Coturn for real-time communication.
