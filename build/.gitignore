@@ -1,5 +1,0 @@
-# Ignore all build output
-*
-
-# But not this file
-!.gitignore

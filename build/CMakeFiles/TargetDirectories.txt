@@ -1,3 +1,0 @@
-C:/Users/Khoi/Documents/GitHub/App_Chatties/build/CMakeFiles/ServerApp.dir
-C:/Users/Khoi/Documents/GitHub/App_Chatties/build/CMakeFiles/ALL_BUILD.dir
-C:/Users/Khoi/Documents/GitHub/App_Chatties/build/CMakeFiles/ZERO_CHECK.dir
