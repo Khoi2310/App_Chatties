@@ -25,22 +25,14 @@ Start chatting, sharing, and connecting — all in one place with **Chatties**!
 
 ```mermaid
 graph TD
-	subgraph CLIENT
-		A[Qt / C# / SQLite]
-	end
-	subgraph SERVER
-		B[C++ Asio + OpenSSL]
-	end
-	subgraph DB
-		C[SQL Server & Redis]
-	end
-	subgraph ROUTING
-		D[VOICE/VIDEO ROUTING (PortAudio / FFmpeg)]
-	end
-	A -- HTTPS / WebSockets / TCP --> B
-	B -- DB Access --> C
-	A -- UDP / WebRTC / Coturn --> D
-	B -- Media Routing --> D
+	A[CLIENT: Qt / C# / SQLite]
+	B[SERVER: C++ Asio + OpenSSL]
+	C[DB: SQL Server & Redis]
+	D[VOICE/VIDEO ROUTING\nPortAudio / FFmpeg]
+	A -- "HTTPS / WebSockets / TCP" --> B
+	B -- "DB Access" --> C
+	A -- "UDP / WebRTC / Coturn" --> D
+	B -- "Media Routing" --> D
 ```
 
 Textual Structure:
