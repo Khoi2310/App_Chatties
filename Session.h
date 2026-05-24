@@ -10,6 +10,8 @@ public:
     void start();
 private:
     void do_read();
+    void do_write(std::size_t length);
+    void handle_error(const std::string& context, std::error_code ec);
     tcp::socket socket_;
     enum { max_length = 1024 };
     char data_[max_length];

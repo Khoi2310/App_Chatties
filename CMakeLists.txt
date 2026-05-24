@@ -11,7 +11,7 @@ set(CMAKE_CXX_STANDARD 17)
 find_package(asio CONFIG REQUIRED)
 find_package(nlohmann_json CONFIG REQUIRED)
 
-file(GLOB_RECURSE SOURCES "*.cpp" "*.hpp")
+file(GLOB_RECURSE SOURCES CONFIGURE_DEPENDS "App_Chatties/*.cpp" "App_Chatties/*.hpp")
 
 add_executable(ServerApp ${SOURCES})
 target_link_libraries(ServerApp PRIVATE asio::asio nlohmann_json::nlohmann_json)
