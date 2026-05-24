@@ -1,26 +1,64 @@
 #include <iostream>
+#include <memory>
 #include <asio.hpp>
-#include <nlohmann/json.hpp>
 
-using json = nlohmann::json;
+using asio::ip::tcp;
 
-int main() {
-    std::cout << "--- Discord Clone Server Bat Dau ---" << std::endl;
+class Session : public std::enable_shared_from_this<Session> {
+public:
+    Session(tcp::socket socket) : socket_(std::move(socket)) {}
 
-    // 1. Thử nghiệm tạo một chuỗi JSON (Giao thức truyền tin)
-    json test_packet;
-    test_packet["type"] = "XAC_THUC";
-    test_packet["status"] = "Thành công!";
-    
-    std::cout << "Gói tin mẫu: " << test_packet.dump() << std::endl;
-
-    // 2. Thử nghiệm khởi tạo vùng quản lý mạng của Asio
-    try {
-        asio::io_context io;
-        std::cout << "Khoi tao Asio io_context thanh cong!" << std::endl;
-    } catch (std::exception& e) {
-        std::cerr << "Loi Asio: " << e.what() << std::endl;
+    void start() {
+        do_read();
     }
 
+private:
+    void do_read() {
+        auto self(shared_from_this());
+        socket_.async_read_some(asio::buffer(data_, max_length),
+            [this, self](std::error_code ec, std::size_t length) {
+                if (!ec) {
+                    std::cout << "[Client] " << std::string(data_, length) << std::endl;
+                    do_read();
+                }
+            });
+    }
+
+    tcp::socket socket_;
+    enum { max_length = 1024 };
+    char data_[max_length];
+};
+
+class Server {
+public:
+    Server(asio::io_context& io_context, short port)
+        : acceptor_(io_context, tcp::endpoint(tcp::v4(), port)) {
+        do_accept();
+    }
+
+private:
+    void do_accept() {
+        acceptor_.async_accept(
+            [this](std::error_code ec, tcp::socket socket) {
+                if (!ec) {
+                    std::make_shared<Session>(std::move(socket))->start();
+                }
+                do_accept();
+            });
+    }
+
+    tcp::acceptor acceptor_;
+};
+
+int main() {
+    try {
+        asio::io_context io_context;
+        short port = 12345;
+        Server server(io_context, port);
+        std::cout << "TCP Server listening on port " << port << std::endl;
+        io_context.run();
+    } catch (std::exception& e) {
+        std::cerr << "Exception: " << e.what() << std::endl;
+    }
     return 0;
 }
