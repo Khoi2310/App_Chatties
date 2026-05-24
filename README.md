@@ -69,14 +69,14 @@ This diagram represents the high-level architecture:
 
 3. Install dependencies:
 	```sh
-	.\vcpkg\vcpkg.exe install asio:x64-windows nlohmann-json:x64-windows sqlite3:x64-windows
+	.\vcpkg\vcpkg.exe install 
 	```
 
 4. Configure and build the project with CMake:
 	```sh
 	mkdir build
 	cd build
-	cmake .. -DCMAKE_TOOLCHAIN_FILE=../vcpkg/scripts/buildsystems/vcpkg.cmake
+	cmake .. "-DCMAKE_TOOLCHAIN_FILE=../vcpkg/scripts/buildsystems/vcpkg.cmake"
 	cmake --build .
 	```
 

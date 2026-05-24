@@ -1,5 +1,5 @@
 {
-  "name": "discord-clone-server",
+  "name": "app-chatties",
   "version-string": "1.0.0",
   "dependencies": [
     "asio",
