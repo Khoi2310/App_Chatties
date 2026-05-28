@@ -1,9 +1,0 @@
-{
-  "name": "app-chatties",
-  "version-string": "1.0.0",
-  "dependencies": [
-    "asio",
-    "nlohmann-json",
-    "sqlite3"
-  ]
-}

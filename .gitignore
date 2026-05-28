@@ -1,19 +1,35 @@
-# Chặn thư mục build của CMake
-/build/
-build/
+# ==========================================
+# C# & VISUAL STUDIO (WINFORMS CLIENT)
+# ==========================================
 
-# Chặn cấu hình riêng của VS Code
-/.vscode/
-.vscode/
+# 1. Bỏ qua các thư mục biên dịch (chứa file nặng)
+[Bb]in/
+[Oo]bj/
+[Oo]ut/
 
-# Chặn toàn bộ thư mục thư viện vcpkg
-/vcpkg/
-vcpkg/
-/vcpkg_installed/
-vcpkg_installed/
+# 2. Bỏ qua file cấu hình tạm và cache của Visual Studio
+.vs/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+*.dbmdl
 
-# Chặn các file sinh ra khi biên dịch và debug của MSVC (cl.exe)
-*.pdb
+# 3. Bỏ qua các file thực thi và file gỡ lỗi cục bộ
 *.exe
-*.obj
+*.dll
+*.pdb
 *.ilk
+*.cache
+*.log
+
+# 4. Bỏ qua cache của các công cụ hỗ trợ (nếu có dùng ReSharper / Rider)
+_ReSharper*/
+*.[Rr]e[Ss]harper
+*.DotSettings.user
+
+# 5. Bỏ qua file nén và file rác hệ điều hành
+*.zip
+*.rar
+.DS_Store
+Thumbs.db
