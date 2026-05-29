@@ -8,6 +8,7 @@ endif()
 project(App_Chatties LANGUAGES CXX) 
 set(CMAKE_CXX_STANDARD 17)
 
+# Find required packages
 find_package(asio CONFIG REQUIRED)
 find_package(nlohmann_json CONFIG REQUIRED)
 

@@ -27,7 +27,7 @@ Start chatting, sharing, and connecting — all in one place with **Chatties**!
 ```mermaid
 graph TD
 	A[CLIENT: Qt / C# / SQLite]
-	B[SERVER: C++ Asio + OpenSSL]
+	B[SERVER: C++ Boost Asio + OpenSSL]
 	C[DB: SQL Server & Redis]
 	D[VOICE/VIDEO ROUTING\nPortAudio / FFmpeg]
 	A -- "HTTPS / WebSockets / TCP" --> B
@@ -46,46 +46,56 @@ Textual Structure:
 
 This diagram represents the high-level architecture:
 - **Client**: Built with Qt or C#, using SQLite for local storage.
-- **Server**: C++ backend using Asio and OpenSSL for secure communication.
+- **Server**: C++ backend using Boost Asio and OpenSSL for secure communication.
 - **Database**: SQL Server and Redis for persistent and in-memory data.
 - **Voice/Video Routing**: Handles media streams using PortAudio and FFmpeg, with UDP/WebRTC/Coturn for real-time communication.
 
 
-[How to Run]
+## 🔧 How to Run
 
-1. Clone the repository:
-	```sh
-	git clone https://github.com/Khoi2310/App_Chatties.git
-	cd App_Chatties
-	```
+### Prerequisites
+- Visual Studio Build Tools or MSVC Compiler
+- CMake 3.15+
+- vcpkg (for dependency management)
 
-2. Install vcpkg (if not already installed):
-	```sh
-	git clone https://github.com/microsoft/vcpkg.git
-	cd vcpkg
-	.\bootstrap-vcpkg.bat
-	cd ..
-	```
+### Setup & Build
 
-3. Install dependencies:
-	```sh
-	.\vcpkg\vcpkg.exe install asio:x64-windows nlohmann-json:x64-windows sqlite3:x64-windows
-	```
+1. **Clone the repository:**
+   ```sh
+   git clone https://github.com/Khoi2310/App_Chatties.git
+   cd App_Chatties
+   ```
 
-4. Configure and build the project with CMake:
-	```sh
-	mkdir build
-	cd build
-	cmake .. -DCMAKE_TOOLCHAIN_FILE=../vcpkg/scripts/buildsystems/vcpkg.cmake
-	cmake --build .
-	```
+2. **Install dependencies (first time only):**
+   ```sh
+   .\vcpkg\vcpkg.exe install boost-asio:x64-windows nlohmann-json:x64-windows sqlite3:x64-windows
+   ```
 
-5. Run the server:
-	```sh
-	.\Debug\ServerApp.exe
-	```
+3. **Configure the project:**
+   ```sh
+   mkdir build
+   cd build
+   cmake .. -DCMAKE_TOOLCHAIN_FILE=../vcpkg/scripts/buildsystems/vcpkg.cmake -G "Visual Studio 17 2022"
+   ```
 
----
-**Tip:** If you are using Visual Studio Code, you can use the **CMake Tools** extension (look for the CMake tab at the bottom of the window) to configure, build, and run the project with one click. This is the recommended way for a smooth experience.
+4. **Build the project:**
+   ```sh
+   cmake --build . --config Debug
+   ```
 
-If you encounter issues with dependencies, ensure your vcpkg path and CMake toolchain file are correct.
+5. **Run the server:**
+   ```sh
+   .\Debug\ServerApp.exe
+   ```
+
+### Using VS Code (Recommended)
+1. Install the **CMake Tools** extension for VS Code
+2. Open the project folder in VS Code
+3. Click the **Build** button in the CMake sidebar (or press `F7`)
+4. Click the **Run** button or press `Ctrl+F5` to launch the server
+5. The server will start listening on port **12345**
+
+### Troubleshooting
+- **Build errors**: Ensure `VCPKG_ROOT` environment variable is set or CMake toolchain file path is correct
+- **Include not found**: Run `vcpkg install` to install missing dependencies
+- **Port in use**: Change the port in `main.cpp` if port 12345 is already in use

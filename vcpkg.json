@@ -2,6 +2,7 @@
   "name": "discord-clone-server",
   "version-string": "1.0.0",
   "dependencies": [
+    "boost-asio",
     "asio",
     "nlohmann-json",
     "sqlite3"
