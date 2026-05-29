@@ -40,7 +40,7 @@ Textual Structure:
 
 	[ CLIENT: Qt / C# / SQLite ]
 		   │
-		   ├─( HTTPS / WebSockets / TCP )─► [ SERVER: C++ Asio + OpenSSL ] ──► [ DB: SQL Server & Redis ]
+		   ├─( HTTPS / WebSockets / TCP )─► [ SERVER: C++ Asio + OpenSSL ] ──► [ DB: MySQL & Redis ]
 		   │                                       │
 		   └─( UDP / WebRTC / Coturn ) ────────────┴─► [ VOICE/VIDEO ROUTING ] (PortAudio / FFmpeg)
 
