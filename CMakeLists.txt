@@ -14,5 +14,5 @@ find_package(nlohmann_json CONFIG REQUIRED)
 # Only include .cpp files in the root directory, not from vcpkg subdirectories
 file(GLOB SOURCES CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/*.cpp")
 
-add_executable(ServerApp ${SOURCES})
+add_executable(ServerApp ${SOURCES} src/server/media/video_processor.h)
 target_link_libraries(ServerApp PRIVATE asio::asio nlohmann_json::nlohmann_json)
