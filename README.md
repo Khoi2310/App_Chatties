@@ -136,7 +136,7 @@ graph TD
     Redis["⚡ Redis Cache"]
     Media["📹 Media Routing<br/>PortAudio/FFmpeg/OpenCV"]
     
-    Client -->|TCP/WebSocket| Server
+    Client -->|TCP| Server
     Client -->|UDP| Media
     Server -->|Query/Update| MySQL
     Server -->|Session/Cache| Redis
