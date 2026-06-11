@@ -22,6 +22,13 @@ add_executable(Chatties
     mainwindow.ui
     chatclient.cpp
     chatclient.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/client/network/socket_client.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/client/ui/main_window.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/common/utils/logger.cpp
+)
+
+target_include_directories(Chatties PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src
 )
 
 target_link_libraries(Chatties PRIVATE

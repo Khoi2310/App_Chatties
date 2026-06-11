@@ -1,6 +1,9 @@
 #ifndef CHATTIES_MAIN_WINDOW_H
 #define CHATTIES_MAIN_WINDOW_H
 
+#include <QLineEdit>
+#include <QTimer>
+#include <memory>
 #include <QMainWindow>
 #include <QLabel>
 #include <QPushButton>
@@ -31,6 +34,9 @@ private:
     QPushButton* disconnect_btn_;
     QPushButton* send_msg_btn_;
     QListWidget* message_list_;
+    QLineEdit* input_field_;      
+    QTimer*    receive_timer_;    
+    std::unique_ptr<SocketClient> socket_client_; 
 };
 
 } // namespace client
