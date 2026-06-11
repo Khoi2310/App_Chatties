@@ -14,7 +14,7 @@ enum class LogLevel {
     DEBUG = 0,
     INFO = 1,
     WARNING = 2,
-    ERROR = 3,
+    ERROR_LEVEL = 3,
     CRITICAL = 4
 };
 
@@ -28,7 +28,7 @@ public:
     void debug(const std::string& msg) { log(LogLevel::DEBUG, msg); }
     void info(const std::string& msg) { log(LogLevel::INFO, msg); }
     void warning(const std::string& msg) { log(LogLevel::WARNING, msg); }
-    void error(const std::string& msg) { log(LogLevel::ERROR, msg); }
+    void error(const std::string& msg) { log(LogLevel::ERROR_LEVEL, msg); }
     void critical(const std::string& msg) { log(LogLevel::CRITICAL, msg); }
     
 private:

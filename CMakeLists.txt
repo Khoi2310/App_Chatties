@@ -11,7 +11,17 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 find_package(asio CONFIG REQUIRED)
 find_package(nlohmann_json CONFIG REQUIRED)
 
-add_executable(ServerApp main.cpp)
+add_executable(ServerApp
+    main.cpp
+    Code/src/common/utils/logger.cpp
+    Code/src/server/core/asio_server.cpp
+    Code/src/server/handlers/message_handler.cpp
+    Code/src/server/handlers/user_handler.cpp
+)
+
+target_include_directories(ServerApp PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/Code/src
+)
 
 target_link_libraries(ServerApp PRIVATE
     asio::asio

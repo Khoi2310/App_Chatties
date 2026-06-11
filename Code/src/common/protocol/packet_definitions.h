@@ -37,7 +37,7 @@ enum class PacketType : uint8_t {
     SERVER_UPDATE = 42,
     
     // Error/System
-    ERROR = 255,
+    ERROR_PACKET = 255,
 };
 
 // Base packet header

@@ -3,7 +3,7 @@
 
 #include <string>
 #include <memory>
-#include "../../common/protocol/packet_definitions.h"
+#include "common/protocol/packet_definitions.h"
 
 namespace chatties {
 namespace server {

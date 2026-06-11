@@ -5,6 +5,7 @@
 #include <memory>
 #include <vector>
 #include <string>
+#include "common/constants.h"
 
 namespace chatties {
 namespace server {
