@@ -1,12 +1,13 @@
 #ifndef CHATTIES_ASIO_SERVER_H
 #define CHATTIES_ASIO_SERVER_H
 
-#include <asio.hpp>
+#include <boost/asio.hpp>
 #include <memory>
 #include <vector>
 #include <string>
 #include "common/constants.h"
 
+namespace asio = boost::asio;
 namespace chatties {
 namespace server {
 

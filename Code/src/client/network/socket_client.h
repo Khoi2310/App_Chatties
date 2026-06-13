@@ -3,8 +3,9 @@
 
 #include <string>
 #include <memory>
-#include <asio.hpp>
+#include <boost/asio.hpp>
 
+namespace asio = boost::asio;
 namespace chatties {
 namespace client {
 
@@ -17,6 +18,8 @@ public:
     void disconnect();
     bool is_connected() const;
     
+    bool has_data();
+
     void send_data(const std::string& data);
     std::string receive_data();
     

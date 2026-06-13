@@ -3,6 +3,7 @@
 #include "../../common/constants.h"
 #include <stdexcept>
 
+namespace asio = boost::asio;
 namespace chatties {
 namespace client {
 
@@ -64,6 +65,18 @@ bool SocketClient::is_connected() const {
     return connected_;
 }
 
+bool SocketClient::has_data()
+{
+   if (!connected_ || !socket_) return false;
+    try {
+        asio::socket_base::bytes_readable command(true);
+        socket_->io_control(command);
+        return command.get() > 0;
+    } catch (const std::exception&) {
+        return false;
+    }
+}
+
 void SocketClient::send_data(const std::string& data) {
     if (!connected_ || !socket_) {
         utils::Logger::instance().warning(
@@ -89,12 +102,8 @@ void SocketClient::send_data(const std::string& data) {
 }
 
 std::string SocketClient::receive_data() {
-    if (!connected_ || !socket_) {
-        utils::Logger::instance().warning(
-            "[SocketClient] Chưa kết nối, không thể nhận dữ liệu."
-        );
-        return "";
-    }
+    if (!connected_ || !socket_) return "";
+    if (!has_data()) return ""; // Không có dữ liệu để đọc
 
     try {
         asio::streambuf buffer;

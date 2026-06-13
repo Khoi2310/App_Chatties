@@ -5,6 +5,7 @@
 #include "server/handlers/user_handler.h"
 #include <iostream>
 
+namespace asio = boost::asio;
 namespace chatties {
 namespace server {
 

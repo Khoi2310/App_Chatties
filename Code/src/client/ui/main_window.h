@@ -8,6 +8,7 @@
 #include <QLabel>
 #include <QPushButton>
 #include <QListWidget>
+#include "../network/socket_client.h"
 
 namespace chatties {
 namespace client {
@@ -23,6 +24,7 @@ private slots:
     void on_connect_clicked();
     void on_disconnect_clicked();
     void on_send_message_clicked();
+    void on_receive_message();  
 
 private:
     void setup_ui();
