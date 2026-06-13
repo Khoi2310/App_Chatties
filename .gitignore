@@ -13,8 +13,9 @@ Makefile
 *.cmake.stamp
 compile_commands.json
 
-# ─── vcpkg (toolchain checkout + per-build installed packages) ─────
-vcpkg/
+# ─── vcpkg ────────────────────────────────────────────────────────
+# The vcpkg submodule itself (./vcpkg) IS tracked via .gitmodules.
+# Only ignore the per-build installed packages it generates.
 vcpkg_installed/
 *.vcpkg
 

@@ -53,6 +53,11 @@ Chatties brings people together in a dynamic, secure, and scalable environment. 
 
 ## 🏗️ Project Structure
 
+> This is the **target** layout. Today the buildable code lives under `Code/`
+> (`Code/CMakeLists.txt`, `Code/vcpkg.json`, `Code/src/`, and the Qt client in
+> `Code/Chatties/`), with vcpkg as a submodule at `./vcpkg`. The media, database,
+> config, and docs folders below are planned.
+
 ```
 App_Chatties/
 ├── src/
@@ -154,53 +159,62 @@ graph TD
 
 ## 📋 How to Setup & Run
 
+> The features above are the project's roadmap. What currently builds is the
+> **Boost.Asio TCP server** (`Code/`) and the **Qt 6 GUI client** (`Code/Chatties/`).
+> C++ dependencies are handled by vcpkg in manifest mode (`Code/vcpkg.json`), pinned
+> to a `builtin-baseline`, with vcpkg included as a git submodule at `./vcpkg`.
+
 ### Prerequisites
-- C++ 17 or higher
-- CMake 3.20+
-- Visual Studio 2019+ or GCC 9+
-- vcpkg for dependency management
-- MySQL Server
-- Redis Server
-- Qt 6.0+ (for client)
+- **Git**
+- **CMake** 3.21+
+- A **C++17 compiler** — Visual Studio 2022 / VS 2022 Build Tools (MSVC) on Windows
+- **Qt 6** (only for the client) — `Core`, `Widgets`, `Network`, `Sql`
 
-### Installation
+> The server links the Winsock libraries (`ws2_32` / `mswsock`) and is Windows-oriented.
+> No extension or IDE is required — these are plain command-line steps.
 
-1. **Clone the repository:**
+### 1. Clone with the vcpkg submodule
 ```sh
-git clone https://github.com/Khoi2310/App_Chatties.git
+git clone --recursive https://github.com/Khoi2310/App_Chatties.git
 cd App_Chatties
 ```
-
-2. **Install vcpkg dependencies:**
+Already cloned without `--recursive`? Run:
 ```sh
-.\vcpkg\vcpkg.exe install asio:x64-windows nlohmann-json:x64-windows sqlite3:x64-windows portaudio:x64-windows opencv:x64-windows ffmpeg:x64-windows --triplet=x64-windows
+git submodule update --init --recursive
 ```
 
-3. **Configure the project:**
-```sh
-mkdir build
-cd build
-cmake .. -DCMAKE_TOOLCHAIN_FILE=../vcpkg/scripts/buildsystems/vcpkg.cmake -DCMAKE_BUILD_TYPE=Release
+### 2. Bootstrap vcpkg (once)
+```powershell
+.\vcpkg\bootstrap-vcpkg.bat        # Windows
+```
+You do **not** need to set `VCPKG_ROOT` — the build points at this submodule.
+
+### 3. Build the server (`ServerApp`)
+```powershell
+cd Code
+cmake --preset default
+cmake --build build
+```
+The first configure installs Boost / nlohmann-json / sqlite3 from the manifest and
+takes a few minutes (Boost compiles from source). The binary lands in `Code/build/`.
+
+### 4. Build the Qt client (`Chatties`)
+The client uses Qt, not vcpkg — point CMake at your Qt kit:
+```powershell
+cd Code/Chatties
+cmake -B build -S . -DCMAKE_PREFIX_PATH="C:/Qt/6.x.x/msvc2022_64"
+cmake --build build
 ```
 
-4. **Build the project:**
-```sh
-cmake --build . --config Release
+### 5. Run
+Start the server, then the client (the client connects to `127.0.0.1:8080`):
+```powershell
+.\Code\build\Debug\ServerApp.exe
+.\Code\Chatties\build\Debug\Chatties.exe
 ```
 
-5. **Setup databases:**
-- Create MySQL database: `mysql -u root -p < ../database/schemas/users.sql`
-- Ensure Redis server is running on default port 6379
-
-6. **Run the server:**
-```sh
-.\Release\ServerApp.exe
-```
-
-7. **Run the client:**
-```sh
-.\Release\ClientApp.exe
-```
+> **Stop the server before rebuilding.** It runs an infinite loop, and a running
+> `ServerApp.exe` locks the `build/` folder on Windows.
 
 ---
 
@@ -208,9 +222,19 @@ cmake --build . --config Release
 
 For detailed development setup and guidelines, see [DEVELOPMENT.md](docs/DEVELOPMENT.md).
 
-### Building with VS Code
-- Install the **CMake Tools** extension
-- Use the CMake tab at the bottom to configure and build with one click
+### Building from the command line
+The project builds with plain CMake — no IDE extension needed:
+```powershell
+cd Code
+cmake --preset default      # configure (uses the vcpkg submodule toolchain)
+cmake --build build         # compile
+```
+If you use the VS Code **CMake Tools** extension, set its source directory to
+`Code` (the `CMakeLists.txt` lives there, not at the repo root) so it doesn't
+create a stray `build/` folder at the top level.
+
+### Updating dependency versions
+Run `vcpkg x-update-baseline` inside `Code/` and commit the updated `vcpkg.json`.
 
 ### Contributing
 Contributions are welcome! Please follow our coding standards and submit pull requests for review.
