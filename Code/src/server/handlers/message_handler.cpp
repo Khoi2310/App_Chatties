@@ -15,7 +15,7 @@ MessageHandler::~MessageHandler() {
     utils::Logger::instance().info("[MessageHandler] Hủy.");
 }
 
-bool MessageHandler::handle_message(const protocol::MessagePacket& packet) {
+void MessageHandler::handle_message(const protocol::MessagePacket& packet) {
     try {
         // Kiểm tra hợp lệ trước
         validate_message(packet);
@@ -30,13 +30,11 @@ bool MessageHandler::handle_message(const protocol::MessagePacket& packet) {
         // Lưu vào DB rồi broadcast
         store_message(packet);
         broadcast_message(packet.channel_id, packet);
-        return true;
 
     } catch (const std::exception& e) {
         utils::Logger::instance().error(
             "[MessageHandler] Lỗi xử lý tin nhắn: " + std::string(e.what())
         );
-        return false;
     }
 }
 
@@ -67,7 +65,7 @@ void MessageHandler::validate_message(const protocol::MessagePacket& packet) {
     if (packet.channel_id == 0) {
         throw std::invalid_argument("channel_id không hợp lệ.");
     }
-    // sender_id do server gán (>= 1), không cần kiểm tra ở Phase 1.
+    // sender_id do server gán (>= 1)
 }
 
 std::string MessageHandler::sanitize_content(const std::string& content) {
