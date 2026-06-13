@@ -1,17 +1,62 @@
-# Chặn thư mục build của CMake
-/build/
+# ─── Build output (any build/ folder, at any depth) ───────────────
 build/
+Build/
+out/
+cmake-build-*/
 
-# Chặn cấu hình riêng của VS Code
-/.vscode/
-.vscode/
+# ─── CMake generated files ────────────────────────────────────────
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+CTestTestfile.cmake
+Makefile
+*.cmake.stamp
+compile_commands.json
 
-# Chặn toàn bộ thư mục thư viện vcpkg
-/vcpkg/
+# ─── vcpkg (toolchain checkout + per-build installed packages) ─────
 vcpkg/
+vcpkg_installed/
+*.vcpkg
 
-# Chặn các file sinh ra khi biên dịch và debug của MSVC (cl.exe)
-*.pdb
-*.exe
+# ─── Qt / Qt Creator generated files ──────────────────────────────
+*.pro.user*
+CMakeLists.txt.user*
+.qmake.cache
+.qmake.stash
+moc_*.cpp
+ui_*.h
+qrc_*.cpp
+*.qm
+*_autogen/
+
+# ─── Compiler / linker artifacts ──────────────────────────────────
+*.o
 *.obj
+*.a
+*.lib
+*.so
+*.so.*
+*.dll
+*.dylib
+*.exe
+*.pdb
 *.ilk
+*.idb
+*.exp
+*.res
+
+# ─── Editor / IDE config ──────────────────────────────────────────
+.vscode/
+.vs/
+.idea/
+*.swp
+*~
+
+# ─── OS junk ──────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ─── Runtime / logs ───────────────────────────────────────────────
+*.log
+server.log
