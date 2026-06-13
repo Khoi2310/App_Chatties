@@ -13,7 +13,7 @@ public:
     void connectToServer(const QString& host, quint16 port);
 
     // Gửi tin nhắn lên server
-    void sendMessage(int channelId, int senderId, const QString& content);
+    void sendMessage(int channelId, const QString& username, const QString& content);
 
 signals:
     void connected();                          // Khi kết nối thành công

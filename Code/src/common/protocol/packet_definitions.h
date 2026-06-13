@@ -59,6 +59,7 @@ struct AuthPacket {
 struct MessagePacket {
     uint32_t channel_id;
     uint32_t sender_id;
+    std::string username;
     std::string content;
     uint32_t timestamp;
 };

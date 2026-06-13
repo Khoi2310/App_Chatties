@@ -21,12 +21,12 @@ void ChatClient::connectToServer(const QString& host, quint16 port) {
     socket_->connectToHost(host, port);
 }
 
-void ChatClient::sendMessage(int channelId, int senderId, const QString& content) {
+void ChatClient::sendMessage(int channelId, const QString& username, const QString& content) {
     // Đóng gói thành JSON
     QJsonObject obj;
     obj["type"]       = "message";
     obj["channel_id"] = channelId;
-    obj["sender_id"]  = senderId;
+    obj["username"]   = username;
     obj["content"]    = content;
 
     QJsonDocument doc(obj);

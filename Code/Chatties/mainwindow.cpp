@@ -42,11 +42,14 @@ void MainWindow::onSendClicked() {
     QString text = ui->inputField->text().trimmed();
     if (text.isEmpty()) return;
 
+    QString username = ui->usernameField->text().trimmed();
+    if (username.isEmpty()) username = "Ẩn danh";
+
     // Hiển thị tin nhắn của mình lên danh sách
     ui->messageList->addItem("Tôi: " + text);
 
-    // Gửi lên server (sender_id tạm để là 1)
-    client_->sendMessage(1, 1, text);
+    // Gửi lên server (channel_id tạm để là 1)
+    client_->sendMessage(1, username, text);
 
     ui->inputField->clear();
 }
@@ -57,11 +60,11 @@ void MainWindow::onMessageReceived(QString json) {
     QJsonObject obj   = doc.object();
 
     QString content  = obj["content"].toString();
-    int senderId     = obj["sender_id"].toInt();
+    QString username = obj["username"].toString();
+    if (username.isEmpty())
+        username = QString("User %1").arg(obj["sender_id"].toInt());
 
-    ui->messageList->addItem(
-        QString("User %1: %2").arg(senderId).arg(content)
-        );
+    ui->messageList->addItem(username + ": " + content);
 }
 
 MainWindow::~MainWindow() {

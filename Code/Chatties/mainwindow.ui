@@ -16,6 +16,24 @@
   <widget class="QWidget" name="centralwidget">
    <layout class="QVBoxLayout" name="verticalLayout_2">
     <item>
+     <layout class="QHBoxLayout" name="usernameLayout">
+      <item>
+       <widget class="QLabel" name="usernameLabel">
+        <property name="text">
+         <string>Tên:</string>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QLineEdit" name="usernameField">
+        <property name="placeholderText">
+         <string>Nhập tên hiển thị của bạn</string>
+        </property>
+       </widget>
+      </item>
+     </layout>
+    </item>
+    <item>
      <layout class="QVBoxLayout" name="verticalLayout">
       <item>
        <widget class="QListWidget" name="messageList"/>

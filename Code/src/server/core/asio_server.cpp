@@ -4,6 +4,9 @@
 #include "server/handlers/message_handler.h"
 #include "server/handlers/user_handler.h"
 #include <iostream>
+#include <algorithm>
+#include <chrono>
+#include <nlohmann/json.hpp>
 
 namespace asio = boost::asio;
 namespace chatties {
@@ -14,10 +17,12 @@ class Connection : public std::enable_shared_from_this<Connection> {
 public:
     Connection(asio::ip::tcp::socket socket,
                std::vector<std::shared_ptr<Connection>>& connections,
-               MessageHandler& msg_handler)
+               MessageHandler& msg_handler,
+               uint32_t id)
         : socket_(std::move(socket))
         , connections_(connections)
         , msg_handler_(msg_handler)
+        , id_(id)
     {}
 
     void start() {
@@ -26,9 +31,13 @@ public:
     }
 
     void deliver(const std::string& data) {
+        // Giữ buffer sống đến khi ghi xong: async_write chạy bất đồng bộ,
+        // nên dữ liệu phải tồn tại sau khi hàm này trả về.
+        auto self = shared_from_this();
+        auto msg  = std::make_shared<std::string>(data);
         asio::async_write(socket_,
-            asio::buffer(data),
-            [](std::error_code, std::size_t) {});
+            asio::buffer(*msg),
+            [self, msg](std::error_code, std::size_t) {});
     }
 
 private:
@@ -43,21 +52,45 @@ private:
                     );
                     buffer_.consume(length);
 
-                    // Parse JSON đơn giản → MessagePacket
-                    // TODO: Dùng nlohmann/json để parse đầy đủ
-                    protocol::MessagePacket packet;
-                    packet.content   = data;
-                    packet.sender_id = 1;     // tạm hardcode
-                    packet.channel_id = 1;    // tạm hardcode
-                    packet.timestamp  = 0;
+                    try {
+                        // Parse JSON đến từ client
+                        auto j = nlohmann::json::parse(data);
 
-                    msg_handler_.handle_message(packet);
+                        protocol::MessagePacket packet;
+                        packet.channel_id = j.value("channel_id", 1u);
+                        packet.username   = j.value("username", std::string("Unknown"));
+                        packet.content    = j.value("content", std::string());
+                        packet.sender_id  = id_;   // server tự gán theo connection
+                        packet.timestamp  = static_cast<uint32_t>(
+                            std::chrono::duration_cast<std::chrono::seconds>(
+                                std::chrono::system_clock::now().time_since_epoch()
+                            ).count()
+                        );
 
-                    // Broadcast đến tất cả client khác
-                    for (auto& conn : connections_) {
-                        if (conn.get() != this) {
-                            conn->deliver(data);
+                        // Kiểm tra hợp lệ + ghi log (lưu DB sẽ làm ở Phase 4).
+                        // Chỉ broadcast khi tin nhắn hợp lệ.
+                        if (msg_handler_.handle_message(packet)) {
+                            // Tạo gói tin chuẩn do server phát đi
+                            nlohmann::json out;
+                            out["type"]       = "message";
+                            out["channel_id"] = packet.channel_id;
+                            out["sender_id"]  = packet.sender_id;
+                            out["username"]   = packet.username;
+                            out["content"]    = packet.content;
+                            out["timestamp"]  = packet.timestamp;
+                            std::string payload = out.dump() + "\n";
+
+                            // Broadcast đến tất cả client khác
+                            for (auto& conn : connections_) {
+                                if (conn.get() != this) {
+                                    conn->deliver(payload);
+                                }
+                            }
                         }
+                    } catch (const std::exception& e) {
+                        utils::Logger::instance().warning(
+                            std::string("[Connection] Bỏ qua gói tin lỗi: ") + e.what()
+                        );
                     }
 
                     do_read(); // Tiếp tục lắng nghe
@@ -81,6 +114,7 @@ private:
     asio::streambuf buffer_;
     std::vector<std::shared_ptr<Connection>>& connections_;
     MessageHandler& msg_handler_;
+    uint32_t id_;
 };
 
 // ─── AsioServer ────────────────────────────────────────────────────────────
@@ -138,8 +172,9 @@ void AsioServer::accept_connection() {
         [this](std::error_code ec, asio::ip::tcp::socket socket) {
             if (!ec && running_) {
                 static MessageHandler msg_handler;
+                static uint32_t next_id = 1;
                 auto conn = std::make_shared<Connection>(
-                    std::move(socket), connections_, msg_handler
+                    std::move(socket), connections_, msg_handler, next_id++
                 );
                 connections_.push_back(conn);
                 conn->start();
