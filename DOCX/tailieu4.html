@@ -1,0 +1,1202 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Tài liệu Kỹ thuật - Chat Application</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+    background: #0f1117;
+    color: #e2e8f0;
+    line-height: 1.7;
+    font-size: 15px;
+  }
+
+  /* SIDEBAR */
+  .sidebar {
+    position: fixed;
+    top: 0; left: 0;
+    width: 260px;
+    height: 100vh;
+    background: #1a1d27;
+    border-right: 1px solid #2d3148;
+    overflow-y: auto;
+    z-index: 100;
+    padding-bottom: 24px;
+  }
+
+  .sidebar-header {
+    padding: 20px 18px 16px;
+    border-bottom: 1px solid #2d3148;
+    background: linear-gradient(135deg, #2d2f6b 0%, #1a1d27 100%);
+  }
+
+  .sidebar-header h2 {
+    font-size: 13px;
+    font-weight: 700;
+    color: #a78bfa;
+    text-transform: uppercase;
+    letter-spacing: 1.2px;
+    margin-bottom: 4px;
+  }
+
+  .sidebar-header p {
+    font-size: 11px;
+    color: #64748b;
+  }
+
+  .sidebar nav { padding: 12px 0; }
+
+  .nav-section-label {
+    padding: 10px 18px 4px;
+    font-size: 10px;
+    font-weight: 700;
+    color: #475569;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+  }
+
+  .nav-link {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 18px;
+    color: #94a3b8;
+    text-decoration: none;
+    font-size: 13px;
+    font-weight: 500;
+    border-left: 3px solid transparent;
+    transition: all 0.15s;
+  }
+
+  .nav-link:hover {
+    background: #252840;
+    color: #e2e8f0;
+    border-left-color: #6366f1;
+  }
+
+  .nav-link .dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+
+  /* MAIN */
+  .main {
+    margin-left: 260px;
+    min-height: 100vh;
+  }
+
+  /* TOP HERO */
+  .hero {
+    background: linear-gradient(135deg, #1e1b4b 0%, #312e81 50%, #1e293b 100%);
+    padding: 52px 48px 44px;
+    border-bottom: 1px solid #2d3148;
+  }
+
+  .hero-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background: rgba(99,102,241,0.2);
+    border: 1px solid #4f46e5;
+    color: #a5b4fc;
+    font-size: 11px;
+    font-weight: 600;
+    padding: 4px 12px;
+    border-radius: 20px;
+    margin-bottom: 16px;
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+  }
+
+  .hero h1 {
+    font-size: 32px;
+    font-weight: 800;
+    color: #f1f5f9;
+    margin-bottom: 12px;
+    line-height: 1.2;
+  }
+
+  .hero p {
+    font-size: 15px;
+    color: #94a3b8;
+    max-width: 600px;
+  }
+
+  .hero-tags {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin-top: 20px;
+  }
+
+  .tag {
+    background: rgba(255,255,255,0.07);
+    border: 1px solid rgba(255,255,255,0.12);
+    color: #cbd5e1;
+    font-size: 11px;
+    padding: 4px 10px;
+    border-radius: 6px;
+  }
+
+  /* CONTENT */
+  .content { padding: 0 48px 60px; }
+
+  /* PART SECTION */
+  .part {
+    margin-top: 48px;
+    border-radius: 16px;
+    overflow: hidden;
+    border: 1px solid #2d3148;
+    background: #141720;
+  }
+
+  .part-header {
+    padding: 24px 28px 20px;
+    display: flex;
+    align-items: flex-start;
+    gap: 16px;
+  }
+
+  .part-num {
+    width: 44px; height: 44px;
+    border-radius: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 16px;
+    font-weight: 800;
+    flex-shrink: 0;
+  }
+
+  .part-title-wrap h2 {
+    font-size: 20px;
+    font-weight: 700;
+    color: #f1f5f9;
+    margin-bottom: 4px;
+  }
+
+  .part-title-wrap p {
+    font-size: 13px;
+    color: #64748b;
+  }
+
+  /* LAYERS */
+  .layer {
+    margin: 0 20px 20px;
+    border-radius: 12px;
+    background: #1a1d2e;
+    border: 1px solid #252840;
+    overflow: hidden;
+  }
+
+  .layer-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 14px 20px;
+    font-size: 12px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+  }
+
+  .layer-db .layer-header   { background: rgba(16,185,129,0.1); color: #10b981; border-bottom: 1px solid rgba(16,185,129,0.2); }
+  .layer-ui .layer-header   { background: rgba(139,92,246,0.1); color: #8b5cf6; border-bottom: 1px solid rgba(139,92,246,0.2); }
+
+  /* SUB SECTIONS */
+  .sub-section { padding: 16px 20px 20px; }
+
+  .sub-section + .sub-section {
+    border-top: 1px solid #252840;
+  }
+
+  .sub-title {
+    font-size: 14px;
+    font-weight: 700;
+    color: #e2e8f0;
+    margin-bottom: 10px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .sub-title .letter {
+    width: 22px; height: 22px;
+    border-radius: 6px;
+    background: rgba(99,102,241,0.25);
+    color: #a5b4fc;
+    font-size: 11px;
+    font-weight: 800;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+  }
+
+  p.body-text {
+    font-size: 14px;
+    color: #94a3b8;
+    margin-bottom: 10px;
+  }
+
+  .highlight {
+    background: rgba(99,102,241,0.15);
+    border-left: 3px solid #6366f1;
+    border-radius: 0 8px 8px 0;
+    padding: 10px 14px;
+    margin: 10px 0;
+    font-size: 13px;
+    color: #c7d2fe;
+  }
+
+  .highlight strong { color: #a5b4fc; }
+
+  /* CODE BLOCKS */
+  .code-block {
+    background: #0d1117;
+    border: 1px solid #2d3148;
+    border-radius: 10px;
+    margin: 12px 0;
+    overflow: hidden;
+  }
+
+  .code-label {
+    background: #1a1d2e;
+    padding: 7px 14px;
+    font-size: 10px;
+    font-weight: 700;
+    color: #475569;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    border-bottom: 1px solid #2d3148;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .code-label span {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+  }
+
+  pre {
+    padding: 16px;
+    font-family: 'Cascadia Code', 'JetBrains Mono', 'Fira Code', monospace;
+    font-size: 12.5px;
+    line-height: 1.65;
+    overflow-x: auto;
+    color: #e2e8f0;
+  }
+
+  .kw  { color: #c792ea; }
+  .fn  { color: #82aaff; }
+  .st  { color: #c3e88d; }
+  .cm  { color: #546e7a; font-style: italic; }
+  .tp  { color: #ffcb6b; }
+  .nb  { color: #f78c6c; }
+  .op  { color: #89ddff; }
+
+  /* FLOW STEPS */
+  .flow {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin: 12px 0;
+  }
+
+  .flow-step {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    padding: 10px 14px;
+    background: #111420;
+    border-radius: 8px;
+    border: 1px solid #1e2233;
+  }
+
+  .step-num {
+    width: 22px; height: 22px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 11px;
+    font-weight: 800;
+    flex-shrink: 0;
+    margin-top: 1px;
+  }
+
+  .flow-step p {
+    font-size: 13px;
+    color: #94a3b8;
+  }
+
+  .flow-step p strong { color: #cbd5e1; }
+
+  /* JSON PREVIEW */
+  .json-block {
+    background: #0d1117;
+    border: 1px solid #1e3a5f;
+    border-radius: 10px;
+    overflow: hidden;
+    margin: 12px 0;
+  }
+
+  .json-label {
+    background: #0a1929;
+    padding: 6px 14px;
+    font-size: 10px;
+    font-weight: 700;
+    color: #38bdf8;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    border-bottom: 1px solid #1e3a5f;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  /* INFO CARDS */
+  .info-cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: 10px;
+    margin: 12px 0;
+  }
+
+  .info-card {
+    background: #111420;
+    border: 1px solid #252840;
+    border-radius: 10px;
+    padding: 14px 16px;
+  }
+
+  .info-card .ic-title {
+    font-size: 12px;
+    font-weight: 700;
+    color: #e2e8f0;
+    margin-bottom: 6px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .info-card .ic-desc {
+    font-size: 12px;
+    color: #64748b;
+    line-height: 1.5;
+  }
+
+  /* NOTE BOX */
+  .note {
+    display: flex;
+    gap: 10px;
+    background: rgba(245,158,11,0.08);
+    border: 1px solid rgba(245,158,11,0.25);
+    border-radius: 10px;
+    padding: 12px 16px;
+    margin: 12px 0;
+  }
+
+  .note-icon { font-size: 16px; flex-shrink: 0; }
+
+  .note-body { font-size: 13px; color: #fcd34d; }
+  .note-body strong { color: #fbbf24; }
+
+  /* STATUS DOTS */
+  .status-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin: 10px 0;
+  }
+
+  .status-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 13px;
+    color: #94a3b8;
+  }
+
+  .status-dot {
+    width: 12px; height: 12px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+
+  .green  { background: #22c55e; box-shadow: 0 0 6px #22c55e88; }
+  .orange { background: #f97316; box-shadow: 0 0 6px #f9731688; }
+  .gray   { background: #475569; }
+
+  /* PART COLORS */
+  .p1 .part-header { background: linear-gradient(135deg, rgba(99,102,241,0.15) 0%, transparent 100%); border-bottom: 1px solid rgba(99,102,241,0.2); }
+  .p1 .part-num { background: rgba(99,102,241,0.2); color: #818cf8; }
+
+  .p2 .part-header { background: linear-gradient(135deg, rgba(16,185,129,0.15) 0%, transparent 100%); border-bottom: 1px solid rgba(16,185,129,0.2); }
+  .p2 .part-num { background: rgba(16,185,129,0.2); color: #34d399; }
+
+  .p3 .part-header { background: linear-gradient(135deg, rgba(59,130,246,0.15) 0%, transparent 100%); border-bottom: 1px solid rgba(59,130,246,0.2); }
+  .p3 .part-num { background: rgba(59,130,246,0.2); color: #60a5fa; }
+
+  .p4 .part-header { background: linear-gradient(135deg, rgba(245,158,11,0.15) 0%, transparent 100%); border-bottom: 1px solid rgba(245,158,11,0.2); }
+  .p4 .part-num { background: rgba(245,158,11,0.2); color: #fbbf24; }
+
+  .p5 .part-header { background: linear-gradient(135deg, rgba(236,72,153,0.15) 0%, transparent 100%); border-bottom: 1px solid rgba(236,72,153,0.2); }
+  .p5 .part-num { background: rgba(236,72,153,0.2); color: #f472b6; }
+
+  .p6 .part-header { background: linear-gradient(135deg, rgba(6,182,212,0.15) 0%, transparent 100%); border-bottom: 1px solid rgba(6,182,212,0.2); }
+  .p6 .part-num { background: rgba(6,182,212,0.2); color: #22d3ee; }
+
+  .p7 .part-header { background: linear-gradient(135deg, rgba(168,85,247,0.15) 0%, transparent 100%); border-bottom: 1px solid rgba(168,85,247,0.2); }
+  .p7 .part-num { background: rgba(168,85,247,0.2); color: #c084fc; }
+
+  .p8 .part-header { background: linear-gradient(135deg, rgba(239,68,68,0.15) 0%, transparent 100%); border-bottom: 1px solid rgba(239,68,68,0.2); }
+  .p8 .part-num { background: rgba(239,68,68,0.2); color: #f87171; }
+
+  .p9 .part-header { background: linear-gradient(135deg, rgba(20,184,166,0.15) 0%, transparent 100%); border-bottom: 1px solid rgba(20,184,166,0.2); }
+  .p9 .part-num { background: rgba(20,184,166,0.2); color: #2dd4bf; }
+
+  .p10 .part-header { background: linear-gradient(135deg, rgba(251,146,60,0.15) 0%, transparent 100%); border-bottom: 1px solid rgba(251,146,60,0.2); }
+  .p10 .part-num { background: rgba(251,146,60,0.2); color: #fb923c; }
+
+  /* scrollbar */
+  ::-webkit-scrollbar { width: 5px; height: 5px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: #2d3148; border-radius: 999px; }
+
+  @media (max-width: 900px) {
+    .sidebar { display: none; }
+    .main { margin-left: 0; }
+    .hero, .content { padding-left: 20px; padding-right: 20px; }
+  }
+</style>
+</head>
+<body>
+
+<!-- SIDEBAR -->
+<aside class="sidebar">
+  <div class="sidebar-header">
+    <h2>📋 Mục lục</h2>
+    <p>Chat Application Docs</p>
+  </div>
+  <nav>
+    <div class="nav-section-label">Phần chính</div>
+    <a class="nav-link" href="#p1"><span class="dot" style="background:#818cf8"></span>1. Authentication & Accounts</a>
+    <a class="nav-link" href="#p2"><span class="dot" style="background:#34d399"></span>2. Servers & Channels</a>
+    <a class="nav-link" href="#p3"><span class="dot" style="background:#60a5fa"></span>3. Text Messaging & History</a>
+    <a class="nav-link" href="#p4"><span class="dot" style="background:#fbbf24"></span>4. Emoji & Reactions</a>
+    <a class="nav-link" href="#p5"><span class="dot" style="background:#f472b6"></span>5. GIFs</a>
+    <a class="nav-link" href="#p6"><span class="dot" style="background:#22d3ee"></span>6. Replies</a>
+    <a class="nav-link" href="#p7"><span class="dot" style="background:#c084fc"></span>7. Forwarding</a>
+    <a class="nav-link" href="#p8"><span class="dot" style="background:#f87171"></span>8. Direct Messages</a>
+    <a class="nav-link" href="#p9"><span class="dot" style="background:#2dd4bf"></span>9. Attachments</a>
+    <a class="nav-link" href="#p10"><span class="dot" style="background:#fb923c"></span>10. Presence & Typing</a>
+  </nav>
+</aside>
+
+<!-- MAIN -->
+<div class="main">
+
+  <div class="hero">
+    <div class="hero-badge">⚡ Technical Documentation</div>
+    <h1>Chat Application<br>Architecture Guide</h1>
+    <p>Tài liệu thiết kế hệ thống đầy đủ bao gồm Database Schema, Server Logic và UI/Client Layer cho ứng dụng chat thời gian thực.</p>
+    <div class="hero-tags">
+      <span class="tag">SQLite</span>
+      <span class="tag">C++ / WebSocket</span>
+      <span class="tag">Libsodium / Argon2</span>
+      <span class="tag">Control Channel</span>
+      <span class="tag">Real-time Events</span>
+    </div>
+  </div>
+
+  <div class="content">
+
+    <!-- ============================================================ -->
+    <!-- PHẦN 1 -->
+    <!-- ============================================================ -->
+    <div class="part p1" id="p1">
+      <div class="part-header">
+        <div class="part-num">1</div>
+        <div class="part-title-wrap">
+          <h2>Authentication &amp; Accounts</h2>
+          <p>Xác thực người dùng, bảo mật mật khẩu, quản lý phiên</p>
+        </div>
+      </div>
+
+      <!-- DB LAYER -->
+      <div class="layer layer-db">
+        <div class="layer-header">🗄️ Database &amp; Server Layer</div>
+
+        <div class="sub-section">
+          <div class="sub-title"><span class="letter">A</span> Thiết kế Database Schema</div>
+          <p class="body-text">SQLite cần quản lý hai thực thể chính: <strong>Người dùng (users)</strong> và <strong>Phiên làm việc (sessions)</strong>.</p>
+          <div class="code-block">
+            <div class="code-label"><span style="background:#22c55e"></span> SQL</div>
+            <pre><span class="cm">-- Bảng lưu trữ thông tin người dùng</span>
+<span class="kw">CREATE TABLE</span> <span class="tp">users</span> (
+    <span class="fn">id</span>            <span class="tp">INTEGER</span> <span class="kw">PRIMARY KEY</span> AUTOINCREMENT,
+    <span class="fn">username</span>      <span class="tp">TEXT</span> <span class="kw">NOT NULL UNIQUE</span>,
+    <span class="fn">password_hash</span> <span class="tp">TEXT</span> <span class="kw">NOT NULL</span>,
+    <span class="fn">created_at</span>    <span class="tp">DATETIME</span> <span class="kw">DEFAULT</span> CURRENT_TIMESTAMP
+);
+
+<span class="cm">-- Bảng quản lý phiên đăng nhập (phục vụ xác thực và auto-login)</span>
+<span class="kw">CREATE TABLE</span> <span class="tp">sessions</span> (
+    <span class="fn">session_token</span> <span class="tp">TEXT</span> <span class="kw">PRIMARY KEY</span>,
+    <span class="fn">user_id</span>       <span class="tp">INTEGER</span> <span class="kw">NOT NULL</span>,
+    <span class="fn">expires_at</span>    <span class="tp">DATETIME</span> <span class="kw">NOT NULL</span>,
+    <span class="kw">FOREIGN KEY</span> (user_id) <span class="kw">REFERENCES</span> users(id) <span class="kw">ON DELETE CASCADE</span>
+);</pre>
+          </div>
+          <div class="note">
+            <span class="note-icon">⚠️</span>
+            <div class="note-body"><strong>Lưu ý:</strong> <code>username</code> được thiết lập thuộc tính <strong>UNIQUE</strong> ở tầng database để ngăn đăng ký trùng tên, tránh Race Condition khi có nhiều request đồng thời.</div>
+          </div>
+        </div>
+
+        <div class="sub-section">
+          <div class="sub-title"><span class="letter">B</span> Tích hợp Argon2 qua Libsodium &amp; vcpkg</div>
+          <p class="body-text">Thay vì dùng MD5 hay SHA-256 (dễ bị tấn công brute-force bằng GPU), hệ thống tích hợp <strong>Argon2id</strong> thông qua <strong>Libsodium</strong>.</p>
+          <div class="info-cards">
+            <div class="info-card">
+              <div class="ic-title">🔐 Khi Đăng ký</div>
+              <div class="ic-desc">Mật khẩu thô qua <code>crypto_pwhash_str</code> — tự tạo salt ngẫu nhiên, cấu hình memory/time cost, tạo chuỗi hash an toàn <code>$argon2id$...</code></div>
+            </div>
+            <div class="info-card">
+              <div class="ic-title">✅ Khi Đăng nhập</div>
+              <div class="ic-desc">Dùng <code>crypto_pwhash_str_verify</code> để so sánh mật khẩu thô với hash — Libsodium tự giải mã cấu hình salt mà không cần lưu salt riêng.</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="sub-section">
+          <div class="sub-title"><span class="letter">C</span> Control Channel &amp; Cấu trúc Ready Payload</div>
+          <p class="body-text">Tất cả lệnh điều khiển (Auth, Join Server, Create Channel) đều đi qua <strong>Control Channel</strong> — kết nối Socket hướng sự kiện.</p>
+
+          <div class="flow">
+            <div class="flow-step">
+              <div class="step-num" style="background:rgba(99,102,241,0.2);color:#818cf8">1</div>
+              <p><strong>Register Flow:</strong> Client gửi <code>auth.register</code> → UserHandler kiểm tra username → Hash mật khẩu Libsodium → INSERT vào DB → Trả kết quả.</p>
+            </div>
+            <div class="flow-step">
+              <div class="step-num" style="background:rgba(99,102,241,0.2);color:#818cf8">2</div>
+              <p><strong>Login Flow:</strong> Client gửi <code>auth.login</code> → Xác thực <code>crypto_pwhash_str_verify</code> → Sinh <code>session_token</code> (UUID/Hex) → Lưu vào bảng sessions (30 ngày) → Trả <code>ready_payload</code>.</p>
+            </div>
+          </div>
+
+          <div class="json-block">
+            <div class="json-label">📦 JSON — ready_payload structure</div>
+            <pre style="padding:14px;color:#94a3b8;font-size:12px">{
+  <span style="color:#f472b6">"event"</span>: <span style="color:#c3e88d">"auth.ready"</span>,
+  <span style="color:#f472b6">"data"</span>: {
+    <span style="color:#f472b6">"session_token"</span>: <span style="color:#c3e88d">"ss_9a8b7c6d5e..."</span>,
+    <span style="color:#f472b6">"user"</span>: { <span style="color:#f472b6">"id"</span>: <span style="color:#f78c6c">14</span>, <span style="color:#f472b6">"username"</span>: <span style="color:#c3e88d">"nguyenvanA"</span> },
+    <span style="color:#f472b6">"servers"</span>: [{
+      <span style="color:#f472b6">"id"</span>: <span style="color:#f78c6c">101</span>, <span style="color:#f472b6">"name"</span>: <span style="color:#c3e88d">"Học Tập C++"</span>,
+      <span style="color:#f472b6">"channels"</span>: [
+        { <span style="color:#f472b6">"id"</span>: <span style="color:#f78c6c">501</span>, <span style="color:#f472b6">"name"</span>: <span style="color:#c3e88d">"thao-luan-chung"</span>, <span style="color:#f472b6">"type"</span>: <span style="color:#c3e88d">"text"</span> }
+      ]
+    }]
+  }
+}</pre>
+          </div>
+          <div class="highlight">
+            <strong>Ý nghĩa Ready Payload:</strong> Client có ngay "bản đồ" dữ liệu đầy đủ để vẽ UI khi vừa đăng nhập xong, giảm thiểu tối đa số round-trip lên server.
+          </div>
+        </div>
+      </div>
+
+      <!-- UI LAYER -->
+      <div class="layer layer-ui">
+        <div class="layer-header">🖥️ UI &amp; Client Layer</div>
+
+        <div class="sub-section">
+          <div class="sub-title"><span class="letter">A</span> Màn hình Login / Register</div>
+          <div class="info-cards">
+            <div class="info-card">
+              <div class="ic-title">🔄 Toggle</div>
+              <div class="ic-desc">Màn hình mặc định là Login. Có nút chuyển đổi sang Register và ngược lại.</div>
+            </div>
+            <div class="info-card">
+              <div class="ic-title">✔️ Validation</div>
+              <div class="ic-desc">Kiểm tra độ dài mật khẩu &gt;6 ký tự, username không có ký tự đặc biệt trước khi gửi lên server.</div>
+            </div>
+            <div class="info-card">
+              <div class="ic-title">🚫 Anti-Spam</div>
+              <div class="ic-desc">Disable nút bấm khi đang đợi Server phản hồi, tránh spam click gửi nhiều request trùng.</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="sub-section">
+          <div class="sub-title"><span class="letter">B</span> Lưu trữ Session &amp; Auto-Login</div>
+          <div class="flow">
+            <div class="flow-step">
+              <div class="step-num" style="background:rgba(139,92,246,0.2);color:#8b5cf6">1</div>
+              <p>Khởi động app → kiểm tra <code>session_token</code> trong bộ nhớ cục bộ.</p>
+            </div>
+            <div class="flow-step">
+              <div class="step-num" style="background:rgba(139,92,246,0.2);color:#8b5cf6">2</div>
+              <p>Nếu <strong>CÓ</strong>: gửi <code>auth.verify_session</code> qua Control Channel thay vì hiển thị màn hình Login.</p>
+            </div>
+            <div class="flow-step">
+              <div class="step-num" style="background:rgba(139,92,246,0.2);color:#8b5cf6">3</div>
+              <p>Server kiểm tra bảng sessions → hợp lệ: trả về <code>ready_payload</code> → vào app. Hết hạn: xóa token, hiển thị Login.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============================================================ -->
+    <!-- PHẦN 2 -->
+    <!-- ============================================================ -->
+    <div class="part p2" id="p2">
+      <div class="part-header">
+        <div class="part-num">2</div>
+        <div class="part-title-wrap">
+          <h2>Servers &amp; Channels</h2>
+          <p>Quản lý máy chủ, kênh, thành viên và định tuyến tin nhắn</p>
+        </div>
+      </div>
+
+      <div class="layer layer-db">
+        <div class="layer-header">🗄️ Database &amp; Server Layer</div>
+        <div class="sub-section">
+          <div class="sub-title"><span class="letter">A</span> Database Schema</div>
+          <p class="body-text">Mô hình: <strong>1 Server → nhiều Channel</strong>; <strong>N User ↔ N Server</strong> (quan hệ nhiều-nhiều).</p>
+          <div class="code-block">
+            <div class="code-label"><span style="background:#22c55e"></span> SQL</div>
+            <pre><span class="kw">CREATE TABLE</span> <span class="tp">servers</span> (
+    id INTEGER <span class="kw">PRIMARY KEY</span> AUTOINCREMENT,
+    name TEXT <span class="kw">NOT NULL</span>, owner_id INTEGER <span class="kw">NOT NULL</span>,
+    icon_url TEXT, created_at DATETIME <span class="kw">DEFAULT</span> CURRENT_TIMESTAMP,
+    <span class="kw">FOREIGN KEY</span> (owner_id) <span class="kw">REFERENCES</span> users(id)
+);
+
+<span class="kw">CREATE TABLE</span> <span class="tp">channels</span> (
+    id INTEGER <span class="kw">PRIMARY KEY</span> AUTOINCREMENT,
+    server_id INTEGER <span class="kw">NOT NULL</span>, name TEXT <span class="kw">NOT NULL</span>,
+    type TEXT <span class="kw">CHECK</span>(type <span class="kw">IN</span> (<span class="st">'text'</span>, <span class="st">'voice'</span>)) <span class="kw">NOT NULL DEFAULT</span> <span class="st">'text'</span>,
+    <span class="kw">FOREIGN KEY</span> (server_id) <span class="kw">REFERENCES</span> servers(id) <span class="kw">ON DELETE CASCADE</span>
+);
+
+<span class="cm">-- Bảng trung gian N-N</span>
+<span class="kw">CREATE TABLE</span> <span class="tp">server_memberships</span> (
+    server_id INTEGER, user_id INTEGER,
+    joined_at DATETIME <span class="kw">DEFAULT</span> CURRENT_TIMESTAMP,
+    <span class="kw">PRIMARY KEY</span> (server_id, user_id)
+);</pre>
+          </div>
+        </div>
+
+        <div class="sub-section">
+          <div class="sub-title"><span class="letter">B</span> Targeted Routing — Thay thế Broadcast toàn cục</div>
+          <p class="body-text">Thay vì phun dữ liệu tới tất cả socket (lãng phí băng thông, vi phạm bảo mật), hệ thống dùng cấu trúc In-memory để định tuyến chính xác.</p>
+          <div class="code-block">
+            <div class="code-label"><span style="background:#60a5fa"></span> C++</div>
+            <pre><span class="cm">// key: channel_id → danh sách kết nối mạng trong kênh đó</span>
+std::<span class="tp">unordered_map</span>&lt;<span class="tp">int</span>, std::<span class="tp">set</span>&lt;<span class="tp">ConnectionPtr</span>&gt;&gt; <span class="fn">channel_routing_map</span>;</pre>
+          </div>
+          <div class="flow">
+            <div class="flow-step"><div class="step-num" style="background:rgba(16,185,129,0.2);color:#10b981">1</div><p><strong>Gửi:</strong> Client gửi gói tin kèm <code>channel_id</code> và <code>content</code>.</p></div>
+            <div class="flow-step"><div class="step-num" style="background:rgba(16,185,129,0.2);color:#10b981">2</div><p><strong>Xác thực quyền từ DB:</strong> Kiểm tra <code>server_memberships</code> để đảm bảo user có quyền.</p></div>
+            <div class="flow-step"><div class="step-num" style="background:rgba(16,185,129,0.2);color:#10b981">3</div><p><strong>Định tuyến trên RAM:</strong> Tra <code>channel_routing_map</code> → chỉ push dữ liệu tới đúng các kết nối trong kênh đó.</p></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="layer layer-ui">
+        <div class="layer-header">🖥️ UI &amp; Client Layer</div>
+        <div class="sub-section">
+          <div class="sub-title"><span class="letter">A</span> Left Server Rail</div>
+          <div class="info-cards">
+            <div class="info-card"><div class="ic-title">⬤ Active State</div><div class="ic-desc">Vệt sáng màu trắng ở mép trái, icon Server nổi bật.</div></div>
+            <div class="info-card"><div class="ic-title">🔴 Unread State</div><div class="ic-desc">Chấm thông báo nhỏ hoặc hiệu ứng mờ khi có tin nhắn chưa đọc.</div></div>
+            <div class="info-card"><div class="ic-title">💬 Tooltip</div><div class="ic-desc">Hover chuột hiển thị tên đầy đủ của Server.</div></div>
+          </div>
+        </div>
+        <div class="sub-section">
+          <div class="sub-title"><span class="letter">B</span> Channel List</div>
+          <p class="body-text">Phân chia thành 2 nhóm: <strong># Text Channels</strong> (văn bản) và <strong>🔊 Voice Channels</strong> (âm thanh). Click Text Channel tải lịch sử tin nhắn; click Voice Channel kết nối Audio.</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============================================================ -->
+    <!-- PHẦN 3 -->
+    <!-- ============================================================ -->
+    <div class="part p3" id="p3">
+      <div class="part-header">
+        <div class="part-num">3</div>
+        <div class="part-title-wrap">
+          <h2>Text Messaging &amp; History</h2>
+          <p>Lưu trữ tin nhắn, phân trang lịch sử, infinite scroll</p>
+        </div>
+      </div>
+
+      <div class="layer layer-db">
+        <div class="layer-header">🗄️ Database &amp; Server Layer</div>
+        <div class="sub-section">
+          <div class="sub-title"><span class="letter">A</span> Database Schema</div>
+          <div class="code-block">
+            <div class="code-label"><span style="background:#22c55e"></span> SQL</div>
+            <pre><span class="kw">CREATE TABLE</span> <span class="tp">messages</span> (
+    id INTEGER <span class="kw">PRIMARY KEY</span> AUTOINCREMENT,
+    channel_id INTEGER <span class="kw">NOT NULL</span>,
+    sender_id  INTEGER <span class="kw">NOT NULL</span>,
+    content    TEXT    <span class="kw">NOT NULL</span>,
+    created_at DATETIME <span class="kw">DEFAULT</span> CURRENT_TIMESTAMP,
+    <span class="kw">FOREIGN KEY</span> (channel_id) <span class="kw">REFERENCES</span> channels(id) <span class="kw">ON DELETE CASCADE</span>,
+    <span class="kw">FOREIGN KEY</span> (sender_id)  <span class="kw">REFERENCES</span> users(id)
+);
+
+<span class="cm">-- Index tối ưu truy vấn lịch sử (cực kỳ quan trọng khi DB phình to)</span>
+<span class="kw">CREATE INDEX</span> <span class="fn">idx_messages_channel_timestamp</span>
+    <span class="kw">ON</span> messages (channel_id, created_at <span class="kw">DESC</span>);</pre>
+          </div>
+        </div>
+        <div class="sub-section">
+          <div class="sub-title"><span class="letter">B</span> Phân trang Cursor-based (Paged History)</div>
+          <p class="body-text">Client gửi: <code>{ channel_id, limit: 50, before_message_id: 1024 }</code>. Server truy vấn và đảo ngược kết quả theo thứ tự thời gian tăng dần.</p>
+          <div class="code-block">
+            <div class="code-label"><span style="background:#22c55e"></span> SQL — Cursor Pagination</div>
+            <pre><span class="kw">SELECT</span> m.id, m.content, m.created_at, u.username
+<span class="kw">FROM</span> messages m
+<span class="kw">JOIN</span> users u <span class="kw">ON</span> m.sender_id = u.id
+<span class="kw">WHERE</span> m.channel_id = <span class="nb">?</span> <span class="kw">AND</span> m.id &lt; <span class="nb">?</span>
+<span class="kw">ORDER BY</span> m.id <span class="kw">DESC</span>
+<span class="kw">LIMIT</span> <span class="nb">?</span>;</pre>
+          </div>
+        </div>
+      </div>
+
+      <div class="layer layer-ui">
+        <div class="layer-header">🖥️ UI &amp; Client Layer</div>
+        <div class="sub-section">
+          <div class="sub-title"><span class="letter">A</span> Message Log Component</div>
+          <p class="body-text">Mỗi tin nhắn gồm: Avatar · Username · Timestamp · Content. Nếu cùng một user gửi liên tiếp trong ~2 phút, tin nhắn được gộp dưới cùng một header (UX Grouping).</p>
+        </div>
+        <div class="sub-section">
+          <div class="sub-title"><span class="letter">B</span> Infinite Scroll / Lazy Loading</div>
+          <div class="flow">
+            <div class="flow-step"><div class="step-num" style="background:rgba(59,130,246,0.2);color:#60a5fa">1</div><p>Mở kênh → gọi <code>channel.history</code> lấy 50 tin mới nhất → auto scroll to bottom.</p></div>
+            <div class="flow-step"><div class="step-num" style="background:rgba(59,130,246,0.2);color:#60a5fa">2</div><p>User cuộn lên đầu (Scroll Top == 0) → hiển thị Loading → gọi thêm <code>channel.history</code> với <code>before_message_id</code>.</p></div>
+            <div class="flow-step"><div class="step-num" style="background:rgba(59,130,246,0.2);color:#60a5fa">3</div><p><strong>Scroll Anchoring:</strong> Tính toán lại vị trí cuộn để giữ nguyên góc nhìn, tránh màn hình bị "giật".</p></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============================================================ -->
+    <!-- PHẦN 4 -->
+    <!-- ============================================================ -->
+    <div class="part p4" id="p4">
+      <div class="part-header">
+        <div class="part-num">4</div>
+        <div class="part-title-wrap">
+          <h2>Emoji &amp; Reactions</h2>
+          <p>Unicode emoji, custom emoji theo server, live reaction update</p>
+        </div>
+      </div>
+
+      <div class="layer layer-db">
+        <div class="layer-header">🗄️ Database &amp; Server Layer</div>
+        <div class="sub-section">
+          <div class="sub-title"><span class="letter">A</span> Database Schema</div>
+          <div class="code-block">
+            <div class="code-label"><span style="background:#22c55e"></span> SQL</div>
+            <pre><span class="cm">-- Custom Emoji theo từng Server</span>
+<span class="kw">CREATE TABLE</span> <span class="tp">custom_emojis</span> (
+    id INTEGER <span class="kw">PRIMARY KEY</span> AUTOINCREMENT,
+    server_id INTEGER <span class="kw">NOT NULL</span>, name TEXT <span class="kw">NOT NULL</span>,
+    image_url TEXT <span class="kw">NOT NULL</span>,
+    <span class="kw">FOREIGN KEY</span> (server_id) <span class="kw">REFERENCES</span> servers(id) <span class="kw">ON DELETE CASCADE</span>
+);
+
+<span class="cm">-- Bảng Reactions (khoá chính kép ngăn thả trùng)</span>
+<span class="kw">CREATE TABLE</span> <span class="tp">reactions</span> (
+    message_id  INTEGER <span class="kw">NOT NULL</span>,
+    user_id     INTEGER <span class="kw">NOT NULL</span>,
+    emoji_type  TEXT <span class="kw">CHECK</span>(emoji_type <span class="kw">IN</span> (<span class="st">'unicode'</span>, <span class="st">'custom'</span>)) <span class="kw">NOT NULL</span>,
+    emoji_value TEXT <span class="kw">NOT NULL</span>,
+    <span class="kw">PRIMARY KEY</span> (message_id, user_id, emoji_value)
+);</pre>
+          </div>
+        </div>
+        <div class="sub-section">
+          <div class="sub-title"><span class="letter">B</span> Live Update Events</div>
+          <div class="json-block">
+            <div class="json-label">📡 reaction.broadcast_update</div>
+            <pre style="padding:14px;color:#94a3b8;font-size:12px">{
+  <span style="color:#f472b6">"event"</span>: <span style="color:#c3e88d">"reaction.broadcast_update"</span>,
+  <span style="color:#f472b6">"data"</span>: {
+    <span style="color:#f472b6">"message_id"</span>: <span style="color:#f78c6c">1024</span>, <span style="color:#f472b6">"emoji_value"</span>: <span style="color:#c3e88d">"😀"</span>,
+    <span style="color:#f472b6">"count"</span>: <span style="color:#f78c6c">5</span>, <span style="color:#f472b6">"action"</span>: <span style="color:#c3e88d">"add"</span>, <span style="color:#f472b6">"user_id"</span>: <span style="color:#f78c6c">14</span>
+  }
+}</pre>
+          </div>
+        </div>
+      </div>
+
+      <div class="layer layer-ui">
+        <div class="layer-header">🖥️ UI &amp; Client Layer</div>
+        <div class="sub-section">
+          <div class="sub-title"><span class="letter">A</span> Emoji Picker Component</div>
+          <p class="body-text">Pop-up phân chia 2 vùng: <strong>Unicode</strong> (theo tab: Smileys, Animals, Food…) và <strong>Custom Emoji</strong> của Server hiện tại.</p>
+        </div>
+        <div class="sub-section">
+          <div class="sub-title"><span class="letter">B</span> Render Inline <code>:name:</code></div>
+          <p class="body-text">Trước khi hiển thị, Client chạy Regex tìm chuỗi <code>:(\w+):</code> → đối chiếu từ điển Server → thay bằng thẻ <code>&lt;img&gt;</code> 20×20px inline với văn bản.</p>
+        </div>
+        <div class="sub-section">
+          <div class="sub-title"><span class="letter">C</span> Reaction Badges UI</div>
+          <div class="info-cards">
+            <div class="info-card"><div class="ic-title">🖱️ Hover Toolbar</div><div class="ic-desc">Di chuột qua tin nhắn → xuất hiện thanh công cụ nhanh gồm nút thêm cảm xúc và 4-5 emoji phổ biến nhất.</div></div>
+            <div class="info-card"><div class="ic-title">🔵 Active State</div><div class="ic-desc">Nếu user đã thả emoji đó, nút đổi màu nền xanh nhạt. Nhấp lại → kích hoạt <code>reaction.remove</code>.</div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============================================================ -->
+    <!-- PHẦN 5 -->
+    <!-- ============================================================ -->
+    <div class="part p5" id="p5">
+      <div class="part-header">
+        <div class="part-num">5</div>
+        <div class="part-title-wrap">
+          <h2>GIFs</h2>
+          <p>Tích hợp Tenor/Giphy API, tìm kiếm và gửi ảnh động</p>
+        </div>
+      </div>
+
+      <div class="layer layer-db">
+        <div class="layer-header">🗄️ Database &amp; Server Layer</div>
+        <div class="sub-section">
+          <div class="sub-title"><span class="letter">A</span> Bảo mật API Key</div>
+          <div class="note"><span class="note-icon">🔒</span><div class="note-body"><strong>Nguyên tắc:</strong> Tuyệt đối không hard-code API Key vào mã nguồn. Lưu trong file <code>.env</code> hoặc JSON/YAML bảo mật phía Server. Khi khởi động, Server đọc vào RAM.</div></div>
+        </div>
+        <div class="sub-section">
+          <div class="sub-title"><span class="letter">B</span> Lưu trữ — message_attachments</div>
+          <p class="body-text">Server <strong>không tải GIF về máy chủ</strong>. GIF được lưu là CDN URL trực tiếp từ Tenor/Giphy trong bảng <code>message_attachments</code>.</p>
+          <div class="code-block">
+            <div class="code-label"><span style="background:#22c55e"></span> SQL</div>
+            <pre><span class="kw">CREATE TABLE</span> <span class="tp">message_attachments</span> (
+    id         INTEGER <span class="kw">PRIMARY KEY</span> AUTOINCREMENT,
+    message_id INTEGER <span class="kw">NOT NULL</span>,
+    kind       TEXT <span class="kw">CHECK</span>(kind <span class="kw">IN</span> (<span class="st">'image'</span>, <span class="st">'file'</span>, <span class="st">'gif'</span>)) <span class="kw">NOT NULL</span>,
+    url        TEXT <span class="kw">NOT NULL</span>,
+    <span class="kw">FOREIGN KEY</span> (message_id) <span class="kw">REFERENCES</span> messages(id) <span class="kw">ON DELETE CASCADE</span>
+);</pre>
+          </div>
+        </div>
+      </div>
+
+      <div class="layer layer-ui">
+        <div class="layer-header">🖥️ UI &amp; Client Layer</div>
+        <div class="sub-section">
+          <div class="sub-title"><span class="letter">A</span> GIF Picker Component</div>
+          <div class="info-cards">
+            <div class="info-card"><div class="ic-title">🔥 Trending</div><div class="ic-desc">Mở picker → tự động load danh sách Trending GIFs đang thịnh hành.</div></div>
+            <div class="info-card"><div class="ic-title">🔍 Search + Debounce</div><div class="ic-desc">Gõ từ khoá → đợi 300ms (debounce) → gọi endpoint tìm kiếm Tenor/Giphy API.</div></div>
+          </div>
+        </div>
+        <div class="sub-section">
+          <div class="sub-title"><span class="letter">B</span> Cơ chế Gửi GIF</div>
+          <p class="body-text">Client không gửi file ảnh — chỉ đóng gói CDN URL vào sự kiện <code>message.send</code> qua Control Channel.</p>
+        </div>
+        <div class="sub-section">
+          <div class="sub-title"><span class="letter">C</span> Tối ưu Render</div>
+          <p class="body-text">Giới hạn chiều rộng tối đa 300px. Nâng cao: hiển thị ảnh tĩnh preview trước, chỉ load GIF động khi người dùng hover/click để tiết kiệm RAM và CPU.</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============================================================ -->
+    <!-- PHẦN 6 -->
+    <!-- ============================================================ -->
+    <div class="part p6" id="p6">
+      <div class="part-header">
+        <div class="part-num">6</div>
+        <div class="part-title-wrap">
+          <h2>Replies</h2>
+          <p>Trả lời tin nhắn, self-referencing FK, Jump to Message</p>
+        </div>
+      </div>
+
+      <div class="layer layer-db">
+        <div class="layer-header">🗄️ Database &amp; Server Layer</div>
+        <div class="sub-section">
+          <div class="sub-title"><span class="letter">A</span> Self-referencing Schema</div>
+          <div class="code-block">
+            <div class="code-label"><span style="background:#22c55e"></span> SQL</div>
+            <pre><span class="cm">-- Thêm trường reply_to_id vào bảng messages</span>
+<span class="kw">ALTER TABLE</span> messages
+    <span class="kw">ADD COLUMN</span> reply_to_id INTEGER <span class="kw">REFERENCES</span> messages(id) <span class="kw">ON DELETE SET NULL</span>;
+
+<span class="kw">CREATE INDEX</span> idx_messages_reply_to <span class="kw">ON</span> messages (reply_to_id);</pre>
+          </div>
+          <div class="note"><span class="note-icon">💡</span><div class="note-body"><strong>ON DELETE SET NULL:</strong> Khi tin nhắn gốc bị xóa, tin nhắn phản hồi vẫn tồn tại — chỉ mất đi mối liên kết (field = NULL), không bị đứt gãy luồng chat.</div></div>
+        </div>
+        <div class="sub-section">
+          <div class="sub-title"><span class="letter">B</span> Broadcast Payload</div>
+          <div class="json-block">
+            <div class="json-label">📡 message.new — với reply_to</div>
+            <pre style="padding:14px;color:#94a3b8;font-size:12px">{
+  <span style="color:#f472b6">"event"</span>: <span style="color:#c3e88d">"message.new"</span>,
+  <span style="color:#f472b6">"data"</span>: {
+    <span style="color:#f472b6">"id"</span>: <span style="color:#f78c6c">2048</span>, <span style="color:#f472b6">"sender_username"</span>: <span style="color:#c3e88d">"le_van_B"</span>,
+    <span style="color:#f472b6">"content"</span>: <span style="color:#c3e88d">"Mình đồng ý với ý kiến này!"</span>,
+    <span style="color:#f472b6">"reply_to"</span>: {
+      <span style="color:#f472b6">"id"</span>: <span style="color:#f78c6c">1024</span>, <span style="color:#f472b6">"sender_username"</span>: <span style="color:#c3e88d">"nguyen_van_A"</span>,
+      <span style="color:#f472b6">"content"</span>: <span style="color:#c3e88d">"Mọi người có nghĩ nên dùng Libsodium không?"</span>
+    }
+  }
+}</pre>
+          </div>
+        </div>
+      </div>
+
+      <div class="layer layer-ui">
+        <div class="layer-header">🖥️ UI &amp; Client Layer</div>
+        <div class="sub-section">
+          <div class="sub-title"><span class="letter">A</span> Reply Bar tại Composer</div>
+          <p class="body-text">Hover tin nhắn → nhấn nút Reply → xuất hiện thanh phụ phía trên Composer hiển thị <em>"Replying to @nguyen_van_A"</em> kèm nút hủy (X). Client lưu tạm <code>current_reply_to_id</code>.</p>
+        </div>
+        <div class="sub-section">
+          <div class="sub-title"><span class="letter">B</span> Quoted Preview + Jump to Message</div>
+          <div class="info-cards">
+            <div class="info-card"><div class="ic-title">📌 Quoted Preview</div><div class="ic-desc">Thanh mỏng màu xám phía trên tin nhắn mới, chứa tên người gửi gốc và preview nội dung (cắt bằng "…" nếu quá dài).</div></div>
+            <div class="info-card"><div class="ic-title">🚀 Jump to Message</div><div class="ic-desc">Click vào preview → nếu tin nhắn gốc đã load: dùng <code>scrollIntoView()</code> smooth + flash highlight. Nếu quá cũ: tải lại xoay quanh ID đó.</div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============================================================ -->
+    <!-- PHẦN 7 -->
+    <!-- ============================================================ -->
+    <div class="part p7" id="p7">
+      <div class="part-header">
+        <div class="part-num">7</div>
+        <div class="part-title-wrap">
+          <h2>Forwarding</h2>
+          <p>Chuyển tiếp tin nhắn, sao chép dữ liệu phía Server</p>
+        </div>
+      </div>
+
+      <div class="layer layer-db">
+        <div class="layer-header">🗄️ Database &amp; Server Layer</div>
+        <div class="sub-section">
+          <div class="sub-title"><span class="letter">A</span> Thêm trường forwarded_from_id</div>
+          <div class="code-block">
+            <div class="code-label"><span style="background:#22c55e"></span> SQL</div>
+            <pre><span class="kw">ALTER TABLE</span> messages
+    <span class="kw">ADD COLUMN</span> forwarded_from_id INTEGER <span class="kw">REFERENCES</span> messages(id) <span class="kw">ON DELETE SET NULL</span>;
+<span class="kw">CREATE INDEX</span> idx_messages_forwarded_from <span class="kw">ON</span> messages (forwarded_from_id);</pre>
+          </div>
+        </div>
+        <div class="sub-section">
+          <div class="sub-title"><span class="letter">B</span> Quy trình Server-Side Duplication</div>
+          <div class="flow">
+            <div class="flow-step"><div class="step-num" style="background:rgba(168,85,247,0.2);color:#c084fc">1</div><p><strong>Xác thực quyền:</strong> Kiểm tra user có quyền đọc kênh nguồn và quyền gửi tại kênh đích.</p></div>
+            <div class="flow-step"><div class="step-num" style="background:rgba(168,85,247,0.2);color:#c084fc">2</div><p><strong>Sao chép dữ liệu:</strong> Server truy vấn toàn bộ content và attachments của tin nhắn gốc.</p></div>
+            <div class="flow-step"><div class="step-num" style="background:rgba(168,85,247,0.2);color:#c084fc">3</div><p><strong>Tạo bản ghi mới:</strong> INSERT vào messages với <code>sender_id</code> = người chuyển tiếp, <code>forwarded_from_id</code> = ID gốc.</p></div>
+            <div class="flow-step"><div class="step-num" style="background:rgba(168,85,247,0.2);color:#c084fc">4</div><p><strong>Sao chép đính kèm</strong> (nếu có) và <strong>Broadcast</strong> tới kênh đích qua <code>channel_routing_map</code>.</p></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="layer layer-ui">
+        <div class="layer-header">🖥️ UI &amp; Client Layer</div>
+        <div class="sub-section">
+          <div class="sub-title"><span class="letter">A</span> Forward Target Picker Modal</div>
+          <p class="body-text">Pop-up giữa màn hình gồm: thanh Live Filter, danh sách phân loại (Recent DMs / Text Channels), nút Send kế bên mỗi đích — có thể gửi tới nhiều đích cùng lúc.</p>
+        </div>
+        <div class="sub-section">
+          <div class="sub-title"><span class="letter">B</span> Forwarded Tag trên khung chat</div>
+          <p class="body-text">Phía trên tin nhắn xuất hiện nhãn nhỏ màu xám nghiêng kèm icon mũi tên cong: <em>↪ Forwarded</em>. Nội dung hiển thị trong khung viền bo góc nhẹ để phân biệt với tin nhắn gõ trực tiếp.</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============================================================ -->
+    <!-- PHẦN 8 -->
+    <!-- ============================================================ -->
+    <div class="part p8" id="p8">
+      <div class="part-header">
+        <div class="part-num">8</div>
+        <div class="part-title-wrap">
+          <h2>Direct Messages (DMs)</h2>
+          <p>Hội thoại riêng tư, Unified Channel Concept, tái sử dụng code</p>
+        </div>
+      </div>
+
+      <div class="layer layer-db">
+        <div class="layer-header">🗄️ Database &amp; Server Layer</div>
+        <div class="sub-section">
+          <div class="sub-title"><span class="letter">A</span> Unified Channel Concept</div>
+          <p class="body-text">DM được coi là một Channel với các đặc tính: <code>server_id = NULL</code>, <code>type = 'dm'</code>, chỉ có đúng 2 thành viên.</p>
+        </div>
+        <div class="sub-section">
+          <div class="sub-title"><span class="letter">B</span> Get-or-Create DM Room</div>
+          <div class="code-block">
+            <div class="code-label"><span style="background:#22c55e"></span> SQL — Kiểm tra phòng DM đã tồn tại chưa</div>
+            <pre><span class="kw">SELECT</span> channel_id <span class="kw">FROM</span> dm_memberships
+<span class="kw">WHERE</span> user_id <span class="kw">IN</span> (<span class="nb">?</span>, <span class="nb">?</span>)
+<span class="kw">GROUP BY</span> channel_id
+<span class="kw">HAVING COUNT</span>(<span class="kw">DISTINCT</span> user_id) = <span class="nb">2</span>;</pre>
+          </div>
+          <p class="body-text" style="margin-top:8px">Nếu <strong>CÓ</strong> → trả về channel_id. Nếu <strong>CHƯA</strong> → Transaction: tạo channel mới + INSERT 2 bản ghi dm_memberships → trả về channel_id mới.</p>
+        </div>
+      </div>
+
+      <div class="layer layer-ui">
+        <div class="layer-header">🖥️ UI &amp; Client Layer</div>
+        <div class="sub-section">
+          <div class="sub-title"><span class="letter">A</span> Tab Home — DM List</div>
+          <p class="body-text">Icon Home ở Left Server Rail → cột thứ 2 chuyển thành danh sách DM gần đây, mỗi mục gồm: Avatar + Username + Presence dot (Online/Offline).</p>
+        </div>
+        <div class="sub-section">
+          <div class="sub-title"><span class="letter">B</span> Code Reusability</div>
+          <div class="highlight"><strong>Điểm mạnh:</strong> Backend đồng nhất → tầng UI tái sử dụng gần 100% code render của luồng chat. Điểm khác biệt duy nhất: Top Bar hiển thị <code>@nguyen_van_B</code> thay vì <code>#thao-luan-chung</code>, kèm trạng thái kết nối.</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============================================================ -->
+    <!-- PHẦN 9 -->
+    <!-- ============================================================ -->
+    <div class="part p9" id="p9">
+      <div class="part-header">
+        <div class="part-num">9</div>
+        <div class="part-title-wrap">
+          <h2>Attachments</h2>
+          <p>Upload file, REST API, conditional rendering theo loại file</p>
+        </div>
+      </div>
+
+      <div class="layer layer-db">
+        <div class="layer-header">🗄️ Database &amp; Server Layer</div>
+        <div class="sub-section">
+          <div class="sub-title"><span class="letter">A</span> Database Schema</div>
+          <div class="code-block">
+            <div class="code-label"><span style="background:#22c55e"></span> SQL</div>
+            <pre><span class="kw">CREATE TABLE</span> <span class="tp">message_attachments</span> (
+    id         INTEGER <span class="kw">PRIMARY KEY</span> AUTOINCREMENT,
+    message_id INTEGER <span class="kw">NOT NULL</span>,
+    filename   TEXT    <span class="kw">NOT NULL</span>,
+    kind       TEXT <span class="kw">CHECK</span>(kind <span class="kw">IN</span> (<span class="st">'image'</span>, <span class="st">'file'</span>, <span class="st">'gif'</span>)) <span class="kw">NOT NULL</span>,
+    url        TEXT    <span class="kw">NOT NULL</span>,
+    file_size  INTEGER <span class="kw">NOT NULL</span>,
+    <span class="kw">FOREIGN KEY</span> (message_id) <span class="kw">REFERENCES</span> messages(id) <span class="kw">ON DELETE CASCADE</span>
+);</pre>
+          </div>
+        </div>
+        <div class="sub-section">
+          <div class="sub-title"><span class="letter">B</span> POST /upload — Endpoint độc lập</div>
+          <div class="flow">
+            <div class="flow-step"><div class="step-num" style="background:rgba(20,184,166,0.2);color:#2dd4bf">1</div><p><strong>Xác thực:</strong> Kiểm tra <code>session_token</code> trong HTTP Header.</p></div>
+            <div class="flow-step"><div class="step-num" style="background:rgba(20,184,166,0.2);color:#2dd4bf">2</div><p><strong>Validation:</strong> Đảm bảo file ≤ 25MB và đúng định dạng cho phép.</p></div>
+            <div class="flow-step"><div class="step-num" style="background:rgba(20,184,166,0.2);color:#2dd4bf">3</div><p><strong>Lưu trữ:</strong> Đổi tên file thành UUID tránh trùng → lưu Local/Cloud Storage.</p></div>
+            <div class="flow-step"><div class="step-num" style="background:rgba(20,184,166,0.2);color:#2dd4bf">4</div><p><strong>Phản hồi:</strong> Trả về <code>200 OK</code> + JSON chứa <code>file_url</code>, <code>filename</code>, <code>file_size</code>.</p></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="layer layer-ui">
+        <div class="layer-header">🖥️ UI &amp; Client Layer</div>
+        <div class="sub-section">
+          <div class="sub-title"><span class="letter">A</span> Async Upload Flow</div>
+          <p class="body-text">Chọn file → ngay lập tức gửi <code>POST /upload</code> ngầm → hiển thị <strong>Progress Bar</strong> (via <code>onUploadProgress</code>) → nhận <code>file_url</code> → đưa vào hàng đợi Composer.</p>
+        </div>
+        <div class="sub-section">
+          <div class="sub-title"><span class="letter">B</span> Conditional Rendering</div>
+          <div class="info-cards">
+            <div class="info-card"><div class="ic-title">🖼️ kind = 'image' / 'gif'</div><div class="ic-desc">Render inline qua thẻ <code>&lt;img&gt;</code> với max-width/height. Click → mở Lightbox toàn màn hình + nút tải về.</div></div>
+            <div class="info-card"><div class="ic-title">📄 kind = 'file'</div><div class="ic-desc">Dựng <strong>Download Card</strong> bo góc: icon định dạng (PDF đỏ, ZIP vàng…) + tên file + dung lượng (vd: 1.0 MB) + nút Download.</div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============================================================ -->
+    <!-- PHẦN 10 -->
+    <!-- ============================================================ -->
+    <div class="part p10" id="p10">
+      <div class="part-header">
+        <div class="part-num">10</div>
+        <div class="part-title-wrap">
+          <h2>Presence &amp; Typing</h2>
+          <p>Trạng thái Online/Idle/Offline, chỉ báo đang gõ thời gian thực</p>
+        </div>
+      </div>
+
+      <div class="layer layer-db">
+        <div class="layer-header">🗄️ Database &amp; Server Layer</div>
+        <div class="sub-section">
+          <div class="sub-title"><span class="letter">A</span> Presence — In-memory Only</div>
+          <p class="body-text">Trạng thái hoạt động <strong>không ghi vào SQLite</strong> (tránh nghẽn I/O). Toàn bộ lưu trên RAM.</p>
+          <div class="code-block">
+            <div class="code-label"><span style="background:#60a5fa"></span> C++</div>
+            <pre><span class="kw">enum class</span> <span class="tp">UserStatus</span> { Online, Idle, Offline };
+
+<span class="kw">struct</span> <span class="tp">UserPresence</span> {
+    <span class="tp">UserStatus</span> status;
+    <span class="tp">int64_t</span>    last_active_timestamp;
+};
+
+std::<span class="tp">unordered_map</span>&lt;<span class="tp">int</span>, <span class="tp">UserPresence</span>&gt; <span class="fn">global_presence_map</span>;</pre>
+          </div>
+          <div class="info-cards">
+            <div class="info-card"><div class="ic-title" style="color:#22c55e">🟢 Online</div><div class="ic-desc">Khi WebSocket kết nối thành công và xác thực → cập nhật RAM → broadcast <code>presence.update</code> tới tất cả Server thành viên.</div></div>
+            <div class="info-card"><div class="ic-title" style="color:#f97316">🟠 Idle</div><div class="ic-desc">Không tương tác trong 5-10 phút → Heartbeat Timer kích hoạt → chuyển Idle → broadcast cập nhật.</div></div>
+            <div class="info-card"><div class="ic-title" style="color:#64748b">⚫ Offline</div><div class="ic-desc">Socket ngắt kết nối → giữ Grace Period 30 giây (phòng mạng chập chờn) → sau đó broadcast Offline chính thức.</div></div>
+          </div>
+        </div>
+        <div class="sub-section">
+          <div class="sub-title"><span class="letter">B</span> Typing — Transient Event</div>
+          <p class="body-text">Server nhận <code>typing.start</code> chứa <code>channel_id</code> → trích xuất <code>user_id</code> → dùng <code>channel_routing_map</code> gửi tới các thành viên khác. Không lưu trữ. Nếu sau 4 giây không nhận thêm gói mới → tự coi như đã dừng gõ.</p>
+        </div>
+      </div>
+
+      <div class="layer layer-ui">
+        <div class="layer-header">🖥️ UI &amp; Client Layer</div>
+        <div class="sub-section">
+          <div class="sub-title"><span class="letter">A</span> Client Throttling</div>
+          <div class="highlight">
+            <strong>Typing Throttling:</strong> Gõ ký tự đầu → gửi ngay <code>typing.start</code> → khóa 3 giây → dù gõ thêm bao nhiêu cũng không gửi thêm → hết khóa → gửi tiếp nếu vẫn đang gõ.
+          </div>
+        </div>
+        <div class="sub-section">
+          <div class="sub-title"><span class="letter">B</span> Typing Indicator UI</div>
+          <div class="info-cards">
+            <div class="info-card"><div class="ic-title">✍️ Hiển thị</div><div class="ic-desc">"Nguyễn Văn A đang gõ…" | "A, B, C đang gõ…" | "Nhiều người đang gõ…" kèm animation 3 chấm nhấp nhô.</div></div>
+            <div class="info-card"><div class="ic-title">⏱️ Timeout 4s</div><div class="ic-desc">Mỗi sự kiện nhận được đặt bộ đếm 4 giây. Không nhận mới → tự xóa tên khỏi danh sách đang gõ.</div></div>
+          </div>
+        </div>
+        <div class="sub-section">
+          <div class="sub-title"><span class="letter">C</span> Presence Dots UI</div>
+          <p class="body-text">Chấm tròn màu đè lên góc dưới phải Avatar ở tất cả vị trí trong app:</p>
+          <div class="status-list">
+            <div class="status-item"><div class="status-dot green"></div> <strong>Xanh lá</strong> — Trực tuyến (Online)</div>
+            <div class="status-item"><div class="status-dot orange"></div> <strong>Cam/Vàng</strong> — Treo máy (Idle)</div>
+            <div class="status-item"><div class="status-dot gray"></div> <strong>Xám</strong> — Ngoại tuyến (Offline)</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- /content -->
+</div><!-- /main -->
+
+</body>
+</html>
