@@ -2,25 +2,30 @@
 #define CHATTIES_USER_HANDLER_H
 
 #include <string>
-#include <memory>
-#include "common/protocol/packet_definitions.h"
+#include <optional>
+#include "server/db/database.h"
 
 namespace chatties {
 namespace server {
 
 class UserHandler {
 public:
-    UserHandler();
-    ~UserHandler();
-    
-    bool authenticate_user(const protocol::AuthPacket& auth);
-    void handle_status_change(const protocol::UserStatusPacket& packet);
-    void handle_user_join(uint32_t user_id, uint32_t server_id);
-    void handle_user_leave(uint32_t user_id, uint32_t server_id);
-    
+    explicit UserHandler(db::Database& database);
+
+    // Đăng ký user mới. nullopt nếu dữ liệu không hợp lệ hoặc username đã tồn tại.
+    std::optional<db::UserRecord> register_user(const std::string& username,
+                                                const std::string& password,
+                                                const std::string& display_name);
+
+    // Xác thực username/password. nullopt nếu sai thông tin.
+    std::optional<db::UserRecord> authenticate(const std::string& username,
+                                               const std::string& password);
+
 private:
-    bool verify_credentials(const std::string& username, const std::string& password);
-    std::string generate_auth_token(uint32_t user_id);
+    std::string hash_password(const std::string& password);
+    bool        verify_password(const std::string& hash, const std::string& password);
+
+    db::Database& db_;
 };
 
 } // namespace server

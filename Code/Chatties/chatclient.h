@@ -2,6 +2,8 @@
 #include <QObject>
 #include <QTcpSocket>
 #include <QString>
+#include <QJsonObject>
+#include <QJsonArray>
 
 class ChatClient : public QObject {
     Q_OBJECT
@@ -9,22 +11,30 @@ class ChatClient : public QObject {
 public:
     explicit ChatClient(QObject* parent = nullptr);
 
-    // Kết nối đến server
     void connectToServer(const QString& host, quint16 port);
 
-    // Gửi tin nhắn lên server
-    void sendMessage(int channelId, const QString& username, const QString& content);
+    // Giao thức theo "op envelope"
+    void registerUser(const QString& username,
+                      const QString& password,
+                      const QString& displayName);
+    void login(const QString& username, const QString& password);
+    void sendMessage(const QString& content);
 
 signals:
-    void connected();                          // Khi kết nối thành công
-    void disconnected();                       // Khi mất kết nối
-    void messageReceived(QString jsonPayload); // Khi nhận tin nhắn mới
+    void connected();
+    void disconnected();
+    void authOk(int userId, QString username, QString displayName);
+    void authError(QString reason);
+    void historyReceived(QJsonArray messages);
+    void messageReceived(QJsonObject message);
 
 private slots:
     void onConnected();
     void onDisconnected();
-    void onReadyRead();    // Khi có dữ liệu từ server
+    void onReadyRead();
 
 private:
+    void sendOp(const QString& op, const QJsonObject& data);
+
     QTcpSocket* socket_;
 };

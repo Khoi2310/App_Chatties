@@ -15,7 +15,7 @@ MessageHandler::~MessageHandler() {
     utils::Logger::instance().info("[MessageHandler] Hủy.");
 }
 
-void MessageHandler::handle_message(const protocol::MessagePacket& packet) {
+bool MessageHandler::handle_message(const protocol::MessagePacket& packet) {
     try {
         // Kiểm tra hợp lệ trước
         validate_message(packet);
@@ -36,6 +36,7 @@ void MessageHandler::handle_message(const protocol::MessagePacket& packet) {
             "[MessageHandler] Lỗi xử lý tin nhắn: " + std::string(e.what())
         );
     }
+    return 0;
 }
 
 void MessageHandler::broadcast_message(uint32_t channel_id,

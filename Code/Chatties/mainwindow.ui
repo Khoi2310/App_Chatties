@@ -7,48 +7,79 @@
     <x>0</x>
     <y>0</y>
     <width>635</width>
-    <height>480</height>
+    <height>520</height>
    </rect>
   </property>
   <property name="windowTitle">
-   <string>MainWindow</string>
+   <string>Chatties</string>
   </property>
   <widget class="QWidget" name="centralwidget">
    <layout class="QVBoxLayout" name="verticalLayout_2">
     <item>
-     <layout class="QHBoxLayout" name="usernameLayout">
-      <item>
-       <widget class="QLabel" name="usernameLabel">
-        <property name="text">
-         <string>Tên:</string>
-        </property>
-       </widget>
-      </item>
+     <layout class="QHBoxLayout" name="authLayout">
       <item>
        <widget class="QLineEdit" name="usernameField">
         <property name="placeholderText">
-         <string>Nhập tên hiển thị của bạn</string>
+         <string>Tên đăng nhập</string>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QLineEdit" name="passwordField">
+        <property name="echoMode">
+         <enum>QLineEdit::Password</enum>
+        </property>
+        <property name="placeholderText">
+         <string>Mật khẩu</string>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QLineEdit" name="displayNameField">
+        <property name="placeholderText">
+         <string>Tên hiển thị (khi đăng ký)</string>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QPushButton" name="loginButton">
+        <property name="text">
+         <string>Đăng nhập</string>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QPushButton" name="registerButton">
+        <property name="text">
+         <string>Đăng ký</string>
         </property>
        </widget>
       </item>
      </layout>
     </item>
     <item>
-     <layout class="QVBoxLayout" name="verticalLayout">
-      <item>
-       <widget class="QListWidget" name="messageList"/>
-      </item>
-     </layout>
+     <widget class="QLabel" name="statusLabel">
+      <property name="text">
+       <string>Đang kết nối...</string>
+      </property>
+     </widget>
     </item>
     <item>
-     <layout class="QHBoxLayout" name="horizontalLayout">
+     <widget class="QListWidget" name="messageList"/>
+    </item>
+    <item>
+     <layout class="QHBoxLayout" name="composerLayout">
       <item>
-       <widget class="QLineEdit" name="inputField"/>
+       <widget class="QLineEdit" name="inputField">
+        <property name="placeholderText">
+         <string>Nhập tin nhắn...</string>
+        </property>
+       </widget>
       </item>
       <item>
        <widget class="QPushButton" name="sendButton">
         <property name="text">
-         <string>Gửi</string>
+         <string>Gửi</string>
         </property>
        </widget>
       </item>

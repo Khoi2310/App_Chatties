@@ -14,7 +14,7 @@ public:
     ~MessageHandler();
     
     // Trả về true nếu tin nhắn hợp lệ và đã xử lý xong.
-    void handle_message(const protocol::MessagePacket& packet);
+    bool handle_message(const protocol::MessagePacket& packet);
     void broadcast_message(uint32_t channel_id, const protocol::MessagePacket& packet);
     void store_message(const protocol::MessagePacket& packet);
     

@@ -17,6 +17,8 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 # Find packages
 find_package(Boost CONFIG REQUIRED COMPONENTS system)
 find_package(nlohmann_json CONFIG REQUIRED)
+find_package(SQLiteCpp CONFIG REQUIRED)
+find_package(unofficial-sodium CONFIG REQUIRED)
 
 # Add executable
 add_executable(ServerApp
@@ -25,6 +27,7 @@ add_executable(ServerApp
     src/server/core/asio_server.cpp
     src/server/handlers/message_handler.cpp
     src/server/handlers/user_handler.cpp
+    src/server/db/database.cpp
 )
 
 # Include directories - now relative to Code/
@@ -43,6 +46,8 @@ target_compile_definitions(ServerApp PRIVATE
 target_link_libraries(ServerApp PRIVATE
     Boost::system
     nlohmann_json::nlohmann_json
+    SQLiteCpp
+    unofficial-sodium::sodium
 )
 
 # On Windows, Asio needs the Winsock libraries linked explicitly.

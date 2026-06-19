@@ -1,8 +1,6 @@
 #include "mainwindow.h"
 #include "ui_mainwindow.h"
 #include "chatclient.h"
-#include <QJsonObject>
-#include <QJsonDocument>
 
 MainWindow::MainWindow(QWidget* parent)
     : QMainWindow(parent)
@@ -12,61 +10,91 @@ MainWindow::MainWindow(QWidget* parent)
     ui->setupUi(this);
     setWindowTitle("Chatties");
 
-    // Khi nhận tin nhắn → hiển thị lên danh sách
-    connect(client_, &ChatClient::messageReceived,
-            this,    &MainWindow::onMessageReceived);
-
-    // Khi kết nối thành công → thông báo
+    // Tín hiệu kết nối
     connect(client_, &ChatClient::connected, this, [this]() {
-        ui->messageList->addItem("✅ Đã kết nối server!");
+        ui->statusLabel->setText("Đã kết nối. Hãy đăng nhập hoặc đăng ký.");
     });
-
-    // Khi mất kết nối → thông báo
     connect(client_, &ChatClient::disconnected, this, [this]() {
-        ui->messageList->addItem("❌ Mất kết nối server!");
+        ui->statusLabel->setText("❌ Mất kết nối server!");
+        setAuthenticated(false);
     });
 
-    // Nút Gửi
-    connect(ui->sendButton, &QPushButton::clicked,
-            this,           &MainWindow::onSendClicked);
+    // Tín hiệu xác thực / tin nhắn
+    connect(client_, &ChatClient::authOk,          this, &MainWindow::onAuthOk);
+    connect(client_, &ChatClient::authError,       this, &MainWindow::onAuthError);
+    connect(client_, &ChatClient::historyReceived, this, &MainWindow::onHistory);
+    connect(client_, &ChatClient::messageReceived, this, &MainWindow::onMessage);
 
-    // Nhấn Enter trong ô nhập cũng gửi tin
-    connect(ui->inputField, &QLineEdit::returnPressed,
-            this,           &MainWindow::onSendClicked);
+    // Nút bấm
+    connect(ui->loginButton,    &QPushButton::clicked, this, &MainWindow::onLoginClicked);
+    connect(ui->registerButton, &QPushButton::clicked, this, &MainWindow::onRegisterClicked);
+    connect(ui->sendButton,     &QPushButton::clicked, this, &MainWindow::onSendClicked);
+    connect(ui->inputField,     &QLineEdit::returnPressed, this, &MainWindow::onSendClicked);
 
-    // Kết nối đến server
+    setAuthenticated(false);
     client_->connectToServer("127.0.0.1", 8080);
+}
+
+MainWindow::~MainWindow() {
+    delete ui;
+}
+
+void MainWindow::setAuthenticated(bool authed) {
+    // Bật composer khi đã đăng nhập; bật ô đăng nhập khi chưa.
+    ui->inputField->setEnabled(authed);
+    ui->sendButton->setEnabled(authed);
+
+    ui->usernameField->setEnabled(!authed);
+    ui->passwordField->setEnabled(!authed);
+    ui->displayNameField->setEnabled(!authed);
+    ui->loginButton->setEnabled(!authed);
+    ui->registerButton->setEnabled(!authed);
+}
+
+void MainWindow::onLoginClicked() {
+    client_->login(ui->usernameField->text().trimmed(),
+                   ui->passwordField->text());
+}
+
+void MainWindow::onRegisterClicked() {
+    client_->registerUser(ui->usernameField->text().trimmed(),
+                          ui->passwordField->text(),
+                          ui->displayNameField->text().trimmed());
+}
+
+void MainWindow::onAuthOk(int userId, QString username, QString displayName) {
+    Q_UNUSED(userId);
+    Q_UNUSED(username);
+    ui->statusLabel->setText("✅ Đã đăng nhập: " + displayName);
+    ui->messageList->clear();
+    setAuthenticated(true);
+}
+
+void MainWindow::onAuthError(QString reason) {
+    ui->statusLabel->setText("⚠️ " + reason);
+}
+
+void MainWindow::onHistory(QJsonArray messages) {
+    for (const auto& v : messages) {
+        appendMessage(v.toObject());
+    }
+}
+
+void MainWindow::onMessage(QJsonObject message) {
+    appendMessage(message);
+}
+
+void MainWindow::appendMessage(const QJsonObject& msg) {
+    const QString username = msg["username"].toString();
+    const QString content  = msg["content"].toString();
+    ui->messageList->addItem(username + ": " + content);
 }
 
 void MainWindow::onSendClicked() {
     QString text = ui->inputField->text().trimmed();
     if (text.isEmpty()) return;
 
-    QString username = ui->usernameField->text().trimmed();
-    if (username.isEmpty()) username = "Ẩn danh";
-
-    // Hiển thị tin nhắn của mình lên danh sách
-    ui->messageList->addItem("Tôi: " + text);
-
-    // Gửi lên server (channel_id tạm để là 1)
-    client_->sendMessage(1, username, text);
-
+    // Server phát lại tin cho tất cả (kể cả mình), nên không tự hiển thị ở đây.
+    client_->sendMessage(text);
     ui->inputField->clear();
-}
-
-void MainWindow::onMessageReceived(QString json) {
-    // Parse JSON để lấy nội dung tin nhắn
-    QJsonDocument doc = QJsonDocument::fromJson(json.toUtf8());
-    QJsonObject obj   = doc.object();
-
-    QString content  = obj["content"].toString();
-    QString username = obj["username"].toString();
-    if (username.isEmpty())
-        username = QString("User %1").arg(obj["sender_id"].toInt());
-
-    ui->messageList->addItem(username + ": " + content);
-}
-
-MainWindow::~MainWindow() {
-    delete ui;
 }
