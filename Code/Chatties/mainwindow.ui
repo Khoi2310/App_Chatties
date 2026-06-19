@@ -7,7 +7,7 @@
     <x>0</x>
     <y>0</y>
     <width>635</width>
-    <height>520</height>
+    <height>560</height>
    </rect>
   </property>
   <property name="windowTitle">
@@ -16,46 +16,121 @@
   <widget class="QWidget" name="centralwidget">
    <layout class="QVBoxLayout" name="verticalLayout_2">
     <item>
-     <layout class="QHBoxLayout" name="authLayout">
-      <item>
-       <widget class="QLineEdit" name="usernameField">
-        <property name="placeholderText">
-         <string>Tên đăng nhập</string>
-        </property>
-       </widget>
-      </item>
-      <item>
-       <widget class="QLineEdit" name="passwordField">
-        <property name="echoMode">
-         <enum>QLineEdit::Password</enum>
-        </property>
-        <property name="placeholderText">
-         <string>Mật khẩu</string>
-        </property>
-       </widget>
-      </item>
-      <item>
-       <widget class="QLineEdit" name="displayNameField">
-        <property name="placeholderText">
-         <string>Tên hiển thị (khi đăng ký)</string>
-        </property>
-       </widget>
-      </item>
-      <item>
-       <widget class="QPushButton" name="loginButton">
-        <property name="text">
-         <string>Đăng nhập</string>
-        </property>
-       </widget>
-      </item>
-      <item>
-       <widget class="QPushButton" name="registerButton">
-        <property name="text">
-         <string>Đăng ký</string>
-        </property>
-       </widget>
-      </item>
-     </layout>
+     <widget class="QTabWidget" name="authTabs">
+      <property name="currentIndex">
+       <number>0</number>
+      </property>
+      <widget class="QWidget" name="loginTab">
+       <attribute name="title">
+        <string>Đăng nhập</string>
+       </attribute>
+       <layout class="QFormLayout" name="loginLayout">
+        <item row="0" column="0">
+         <widget class="QLabel" name="loginUsernameLabel">
+          <property name="text">
+           <string>Tên đăng nhập</string>
+          </property>
+         </widget>
+        </item>
+        <item row="0" column="1">
+         <widget class="QLineEdit" name="loginUsernameField"/>
+        </item>
+        <item row="1" column="0">
+         <widget class="QLabel" name="loginPasswordLabel">
+          <property name="text">
+           <string>Mật khẩu</string>
+          </property>
+         </widget>
+        </item>
+        <item row="1" column="1">
+         <widget class="QLineEdit" name="loginPasswordField">
+          <property name="echoMode">
+           <enum>QLineEdit::Password</enum>
+          </property>
+         </widget>
+        </item>
+        <item row="2" column="1">
+         <widget class="QPushButton" name="loginButton">
+          <property name="text">
+           <string>Đăng nhập</string>
+          </property>
+         </widget>
+        </item>
+       </layout>
+      </widget>
+      <widget class="QWidget" name="registerTab">
+       <attribute name="title">
+        <string>Đăng ký</string>
+       </attribute>
+       <layout class="QFormLayout" name="registerLayout">
+        <item row="0" column="0">
+         <widget class="QLabel" name="regUsernameLabel">
+          <property name="text">
+           <string>Tên đăng nhập</string>
+          </property>
+         </widget>
+        </item>
+        <item row="0" column="1">
+         <widget class="QLineEdit" name="regUsernameField"/>
+        </item>
+        <item row="1" column="0">
+         <widget class="QLabel" name="regEmailLabel">
+          <property name="text">
+           <string>Email</string>
+          </property>
+         </widget>
+        </item>
+        <item row="1" column="1">
+         <widget class="QLineEdit" name="regEmailField"/>
+        </item>
+        <item row="2" column="0">
+         <widget class="QLabel" name="regDisplayNameLabel">
+          <property name="text">
+           <string>Tên hiển thị</string>
+          </property>
+         </widget>
+        </item>
+        <item row="2" column="1">
+         <widget class="QLineEdit" name="regDisplayNameField"/>
+        </item>
+        <item row="3" column="0">
+         <widget class="QLabel" name="regPasswordLabel">
+          <property name="text">
+           <string>Mật khẩu</string>
+          </property>
+         </widget>
+        </item>
+        <item row="3" column="1">
+         <widget class="QLineEdit" name="regPasswordField">
+          <property name="echoMode">
+           <enum>QLineEdit::Password</enum>
+          </property>
+         </widget>
+        </item>
+        <item row="4" column="0">
+         <widget class="QLabel" name="regConfirmPasswordLabel">
+          <property name="text">
+           <string>Xác nhận mật khẩu</string>
+          </property>
+         </widget>
+        </item>
+        <item row="4" column="1">
+         <widget class="QLineEdit" name="regConfirmPasswordField">
+          <property name="echoMode">
+           <enum>QLineEdit::Password</enum>
+          </property>
+         </widget>
+        </item>
+        <item row="5" column="1">
+         <widget class="QPushButton" name="registerButton">
+          <property name="text">
+           <string>Đăng ký</string>
+          </property>
+         </widget>
+        </item>
+       </layout>
+      </widget>
+     </widget>
     </item>
     <item>
      <widget class="QLabel" name="statusLabel">

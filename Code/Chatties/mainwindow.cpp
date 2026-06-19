@@ -40,26 +40,30 @@ MainWindow::~MainWindow() {
 }
 
 void MainWindow::setAuthenticated(bool authed) {
-    // Bật composer khi đã đăng nhập; bật ô đăng nhập khi chưa.
+    // Ẩn khu vực đăng nhập/đăng ký khi đã vào; bật composer.
+    ui->authTabs->setVisible(!authed);
     ui->inputField->setEnabled(authed);
     ui->sendButton->setEnabled(authed);
-
-    ui->usernameField->setEnabled(!authed);
-    ui->passwordField->setEnabled(!authed);
-    ui->displayNameField->setEnabled(!authed);
-    ui->loginButton->setEnabled(!authed);
-    ui->registerButton->setEnabled(!authed);
 }
 
 void MainWindow::onLoginClicked() {
-    client_->login(ui->usernameField->text().trimmed(),
-                   ui->passwordField->text());
+    client_->login(ui->loginUsernameField->text().trimmed(),
+                   ui->loginPasswordField->text());
 }
 
 void MainWindow::onRegisterClicked() {
-    client_->registerUser(ui->usernameField->text().trimmed(),
-                          ui->passwordField->text(),
-                          ui->displayNameField->text().trimmed());
+    const QString password = ui->regPasswordField->text();
+    const QString confirm  = ui->regConfirmPasswordField->text();
+
+    if (password != confirm) {
+        ui->statusLabel->setText("⚠️ Mật khẩu xác nhận không khớp.");
+        return;
+    }
+
+    client_->registerUser(ui->regUsernameField->text().trimmed(),
+                          ui->regEmailField->text().trimmed(),
+                          password,
+                          ui->regDisplayNameField->text().trimmed());
 }
 
 void MainWindow::onAuthOk(int userId, QString username, QString displayName) {

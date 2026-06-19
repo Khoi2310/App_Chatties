@@ -4,6 +4,7 @@
 ChatClient::ChatClient(QObject* parent)
     : QObject(parent)
     , socket_(new QTcpSocket(this))
+    , reconnectTimer_(new QTimer(this))
 {
     connect(socket_, &QTcpSocket::connected,
             this,    &ChatClient::onConnected);
@@ -11,10 +12,33 @@ ChatClient::ChatClient(QObject* parent)
             this,    &ChatClient::onDisconnected);
     connect(socket_, &QTcpSocket::readyRead,
             this,    &ChatClient::onReadyRead);
+    connect(socket_, &QTcpSocket::errorOccurred,
+            this,    &ChatClient::onErrorOccurred);
+
+    // Thử kết nối lại mỗi 2 giây cho đến khi thành công.
+    reconnectTimer_->setInterval(2000);
+    connect(reconnectTimer_, &QTimer::timeout,
+            this, &ChatClient::tryReconnect);
 }
 
 void ChatClient::connectToServer(const QString& host, quint16 port) {
-    socket_->connectToHost(host, port);
+    host_ = host;
+    port_ = port;
+    reconnectTimer_->start();        // tiếp tục thử cho đến khi kết nối được
+    socket_->connectToHost(host_, port_);
+}
+
+void ChatClient::tryReconnect() {
+    if (socket_->state() == QAbstractSocket::UnconnectedState) {
+        socket_->connectToHost(host_, port_);
+    }
+}
+
+void ChatClient::onErrorOccurred() {
+    // Kết nối thất bại (vd: server chưa bật) → đảm bảo vẫn đang thử lại.
+    if (port_ != 0 && socket_->state() == QAbstractSocket::UnconnectedState) {
+        reconnectTimer_->start();
+    }
 }
 
 void ChatClient::sendOp(const QString& op, const QJsonObject& data) {
@@ -28,10 +52,12 @@ void ChatClient::sendOp(const QString& op, const QJsonObject& data) {
 }
 
 void ChatClient::registerUser(const QString& username,
+                              const QString& email,
                               const QString& password,
                               const QString& displayName) {
     QJsonObject data;
     data["username"]     = username;
+    data["email"]        = email;
     data["password"]     = password;
     data["display_name"] = displayName;
     sendOp("auth.register", data);
@@ -45,17 +71,49 @@ void ChatClient::login(const QString& username, const QString& password) {
 }
 
 void ChatClient::sendMessage(const QString& content) {
+    if (currentChannelId_ == 0) return;   // chưa chọn channel
     QJsonObject data;
-    data["content"] = content;
+    data["channel_id"] = currentChannelId_;
+    data["content"]    = content;
     sendOp("message.create", data);
 }
 
+void ChatClient::createServer(const QString& name) {
+    QJsonObject data;
+    data["name"] = name;
+    sendOp("server.create", data);
+}
+
+void ChatClient::joinServer(int serverId) {
+    QJsonObject data;
+    data["server_id"] = serverId;
+    sendOp("server.join", data);
+}
+
+void ChatClient::createChannel(int serverId, const QString& name) {
+    QJsonObject data;
+    data["server_id"] = serverId;
+    data["name"]      = name;
+    sendOp("channel.create", data);
+}
+
+void ChatClient::selectChannel(int channelId) {
+    currentChannelId_ = channelId;
+    QJsonObject data;
+    data["channel_id"] = channelId;
+    sendOp("channel.select", data);
+}
+
 void ChatClient::onConnected() {
+    reconnectTimer_->stop();         // đã kết nối, ngừng thử lại
     emit connected();
 }
 
 void ChatClient::onDisconnected() {
     emit disconnected();
+    if (port_ != 0) {
+        reconnectTimer_->start();    // tự động kết nối lại
+    }
 }
 
 void ChatClient::onReadyRead() {
@@ -79,9 +137,14 @@ void ChatClient::onReadyRead() {
         } else if (op == "auth.error") {
             emit authError(data["reason"].toString());
         } else if (op == "ready") {
-            emit historyReceived(data["recent_messages"].toArray());
+            emit serversReceived(data["servers"].toArray());
+        } else if (op == "channel.history") {
+            emit channelHistory(data["channel_id"].toInt(),
+                                data["messages"].toArray());
         } else if (op == "message.create") {
             emit messageReceived(data);
+        } else if (op == "error") {
+            emit errorReceived(data["reason"].toString());
         }
     }
 }

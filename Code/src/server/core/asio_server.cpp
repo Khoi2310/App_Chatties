@@ -33,7 +33,6 @@ public:
     }
 
     void deliver(const std::string& data) {
-        // Giữ buffer sống đến khi ghi xong (async_write chạy bất đồng bộ).
         auto self = shared_from_this();
         auto msg  = std::make_shared<std::string>(data);
         asio::async_write(socket_, asio::buffer(*msg),
@@ -41,15 +40,20 @@ public:
     }
 
     bool is_authenticated() const { return state_ == State::Authenticated; }
+    bool is_viewing(uint32_t channel_id) const {
+        return state_ == State::Authenticated && current_channel_id_ == channel_id;
+    }
 
 private:
-    static constexpr uint32_t DEFAULT_CHANNEL = 1;
-
     void send_op(const std::string& op, const nlohmann::json& data) {
         nlohmann::json env;
         env["op"]   = op;
         env["data"] = data;
         deliver(env.dump() + "\n");
+    }
+
+    void send_error(const std::string& reason) {
+        send_op("error", { {"reason", reason} });
     }
 
     void do_read() {
@@ -84,8 +88,11 @@ private:
                 else send_op("auth.error",
                              { {"reason", "Bạn cần đăng nhập trước."} });
             } else { // Authenticated
-                if (op == "message.create")  handle_message_create(data);
-                // Các op khác sẽ bổ sung ở milestone sau.
+                if      (op == "message.create") handle_message_create(data);
+                else if (op == "channel.select") handle_channel_select(data);
+                else if (op == "server.create")  handle_server_create(data);
+                else if (op == "server.join")    handle_server_join(data);
+                else if (op == "channel.create") handle_channel_create(data);
             }
         } catch (const std::exception& e) {
             utils::Logger::instance().warning(
@@ -93,18 +100,17 @@ private:
         }
     }
 
+    // ── Xác thực ─────────────────────────────────────────────────
     void handle_register(const nlohmann::json& data) {
         std::string username     = data.value("username", std::string());
+        std::string email        = data.value("email", std::string());
         std::string password     = data.value("password", std::string());
         std::string display_name = data.value("display_name", std::string());
 
-        auto rec = user_handler_.register_user(username, password, display_name);
-        if (rec) {
-            on_auth_success(*rec);
-        } else {
-            send_op("auth.error",
-                    { {"reason", "Đăng ký thất bại (username đã tồn tại hoặc dữ liệu không hợp lệ)."} });
-        }
+        auto rec = user_handler_.register_user(username, email, password, display_name);
+        if (rec) on_auth_success(*rec);
+        else send_op("auth.error",
+                     { {"reason", "Đăng ký thất bại (username/email đã tồn tại hoặc dữ liệu không hợp lệ)."} });
     }
 
     void handle_login(const nlohmann::json& data) {
@@ -112,12 +118,9 @@ private:
         std::string password = data.value("password", std::string());
 
         auto rec = user_handler_.authenticate(username, password);
-        if (rec) {
-            on_auth_success(*rec);
-        } else {
-            send_op("auth.error",
-                    { {"reason", "Sai tên đăng nhập hoặc mật khẩu."} });
-        }
+        if (rec) on_auth_success(*rec);
+        else send_op("auth.error",
+                     { {"reason", "Sai tên đăng nhập hoặc mật khẩu."} });
     }
 
     void on_auth_success(const db::UserRecord& rec) {
@@ -131,52 +134,117 @@ private:
             {"username",     rec.username},
             {"display_name", rec.display_name}
         });
-
-        // Gửi lịch sử gần đây.
-        nlohmann::json history = nlohmann::json::array();
-        for (const auto& m : db_.recent_messages(DEFAULT_CHANNEL, 50)) {
-            history.push_back(message_to_json(m));
-        }
-        send_op("ready", { {"recent_messages", history} });
+        send_ready();
     }
 
+    // ── Danh sách server + channel ───────────────────────────────
+    void send_ready() {
+        nlohmann::json servers = nlohmann::json::array();
+        for (const auto& s : db_.servers_for_user(user_id_)) {
+            nlohmann::json channels = nlohmann::json::array();
+            for (const auto& c : db_.channels_for_server(s.id)) {
+                channels.push_back({
+                    {"id", c.id}, {"name", c.name}, {"server_id", c.server_id}
+                });
+            }
+            servers.push_back({
+                {"id", s.id}, {"name", s.name}, {"channels", channels}
+            });
+        }
+        send_op("ready", { {"servers", servers} });
+    }
+
+    // ── Chọn channel + lịch sử ───────────────────────────────────
+    void handle_channel_select(const nlohmann::json& data) {
+        uint32_t channel_id = data.value("channel_id", 0u);
+        uint32_t server_id  = db_.channel_server_id(channel_id);
+        if (server_id == 0 || !db_.is_member(user_id_, server_id)) {
+            send_error("Không có quyền truy cập channel.");
+            return;
+        }
+        current_channel_id_ = channel_id;
+
+        nlohmann::json msgs = nlohmann::json::array();
+        for (const auto& m : db_.recent_messages(channel_id, 50)) {
+            msgs.push_back(message_to_json(m));
+        }
+        send_op("channel.history",
+                { {"channel_id", channel_id}, {"messages", msgs} });
+    }
+
+    // ── Gửi tin nhắn ─────────────────────────────────────────────
     void handle_message_create(const nlohmann::json& data) {
+        uint32_t channel_id = data.value("channel_id", 0u);
         std::string content = data.value("content", std::string());
         if (content.empty()) return;
+
+        uint32_t server_id = db_.channel_server_id(channel_id);
+        if (server_id == 0 || !db_.is_member(user_id_, server_id)) {
+            send_error("Không có quyền gửi vào channel.");
+            return;
+        }
         if (content.size() > chatties::MAX_MESSAGE_LENGTH) {
             content = content.substr(0, chatties::MAX_MESSAGE_LENGTH);
         }
 
         uint32_t ts = static_cast<uint32_t>(
             std::chrono::duration_cast<std::chrono::seconds>(
-                std::chrono::system_clock::now().time_since_epoch()
-            ).count());
+                std::chrono::system_clock::now().time_since_epoch()).count());
 
-        uint32_t id = db_.insert_message(DEFAULT_CHANNEL, user_id_, content, ts);
+        uint32_t id = db_.insert_message(channel_id, user_id_, content, ts);
 
         db::MessageRecord rec;
         rec.id          = id;
-        rec.channel_id  = DEFAULT_CHANNEL;
+        rec.channel_id  = channel_id;
         rec.author_id   = user_id_;
         rec.author_name = display_name_;
         rec.content     = content;
         rec.created_at  = ts;
 
         utils::Logger::instance().info(
-            "[Message] " + display_name_ +
-            " (user " + std::to_string(user_id_) + "): " + content);
+            "[Message] ch" + std::to_string(channel_id) + " " +
+            display_name_ + ": " + content);
 
         nlohmann::json env;
         env["op"]   = "message.create";
         env["data"] = message_to_json(rec);
         std::string payload = env.dump() + "\n";
 
-        // Phát cho mọi client đã đăng nhập (kể cả người gửi).
+        // Chỉ gửi cho client đang xem đúng channel này.
         for (auto& conn : connections_) {
-            if (conn->is_authenticated()) {
+            if (conn->is_viewing(channel_id)) {
                 conn->deliver(payload);
             }
         }
+    }
+
+    // ── Tạo / tham gia server, tạo channel ───────────────────────
+    void handle_server_create(const nlohmann::json& data) {
+        std::string name = data.value("name", std::string());
+        if (name.empty()) { send_error("Tên server không hợp lệ."); return; }
+
+        uint32_t sid = db_.create_server(name, user_id_);
+        db_.create_channel(sid, "general");
+        db_.add_member(sid, user_id_);
+        send_ready();
+    }
+
+    void handle_server_join(const nlohmann::json& data) {
+        uint32_t server_id = data.value("server_id", 0u);
+        if (server_id == 0) { send_error("server_id không hợp lệ."); return; }
+        db_.add_member(server_id, user_id_);
+        send_ready();
+    }
+
+    void handle_channel_create(const nlohmann::json& data) {
+        uint32_t server_id = data.value("server_id", 0u);
+        std::string name   = data.value("name", std::string());
+        if (name.empty() || !db_.is_member(user_id_, server_id)) {
+            send_error("Không thể tạo channel.");
+            return;
+        }
+        db_.create_channel(server_id, name);
+        send_ready();
     }
 
     nlohmann::json message_to_json(const db::MessageRecord& m) {
@@ -206,8 +274,9 @@ private:
     db::Database& db_;
     UserHandler&  user_handler_;
 
-    State       state_   = State::Unauthenticated;
-    uint32_t    user_id_ = 0;
+    State       state_              = State::Unauthenticated;
+    uint32_t    user_id_            = 0;
+    uint32_t    current_channel_id_ = 0;
     std::string username_;
     std::string display_name_;
 };

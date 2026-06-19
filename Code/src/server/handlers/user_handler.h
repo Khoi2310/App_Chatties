@@ -12,8 +12,9 @@ class UserHandler {
 public:
     explicit UserHandler(db::Database& database);
 
-    // Đăng ký user mới. nullopt nếu dữ liệu không hợp lệ hoặc username đã tồn tại.
+    // Đăng ký user mới. nullopt nếu dữ liệu không hợp lệ hoặc username/email đã tồn tại.
     std::optional<db::UserRecord> register_user(const std::string& username,
+                                                const std::string& email,
                                                 const std::string& password,
                                                 const std::string& display_name);
 
