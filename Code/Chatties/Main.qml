@@ -1,46 +1,51 @@
 import QtQuick
 import QtQuick.Controls
+import QtQuick.Controls.Material
+import Chatties
 
 ApplicationWindow {
     id: window
     visible: true
-    width: 480
-    height: 320
+    width: 520
+    height: 620
     title: qsTr("Chatties")
+    color: Theme.background
 
-    Column {
-        anchors.centerIn: parent
-        spacing: 16
+    Material.theme: Material.Dark
+    Material.accent: Theme.accent
+    Material.primary: Theme.accent
 
-        Label {
-            id: statusLabel
-            anchors.horizontalCenter: parent.horizontalCenter
-            text: qsTr("Đang kết nối...")
-        }
+    property bool loggedIn: false
+    property var servers: []          // [{id, name, channels:[{id,name}]}]
+    property int currentChannelId: 0
 
-        
-        Button {
-            anchors.horizontalCenter: parent.horizontalCenter
-            text: qsTr("Test đăng nhập (admin)")
-            onClicked: chatClient.login("admin", "admin123")
-        }
+    AuthView {
+        anchors.fill: parent
+        visible: !window.loggedIn
     }
 
-    
+    ChatView {
+        anchors.fill: parent
+        visible: window.loggedIn
+    }
+
     Connections {
         target: chatClient
-
-        function onConnected() {
-            statusLabel.text = qsTr("✅ Đã kết nối server")
-        }
+        function onAuthOk(userId, username, displayName) { window.loggedIn = true }
         function onDisconnected() {
-            statusLabel.text = qsTr("❌ Mất kết nối server")
+            window.loggedIn = false
+            window.servers = []
+            window.currentChannelId = 0
         }
-        function onAuthOk(userId, username, displayName) {
-            statusLabel.text = qsTr("Đăng nhập OK: ") + displayName
-        }
-        function onAuthError(reason) {
-            statusLabel.text = qsTr("Lỗi: ") + reason
+        function onServersReceived(servers) {
+            window.servers = servers
+            // Tự chọn channel đầu tiên nếu chưa chọn channel nào.
+            if (window.currentChannelId === 0
+                    && servers.length > 0
+                    && servers[0].channels.length > 0) {
+                window.currentChannelId = servers[0].channels[0].id
+                chatClient.selectChannel(window.currentChannelId)
+            }
         }
     }
 }

@@ -129,6 +129,10 @@ private:
         username_     = rec.username;
         display_name_ = rec.display_name;
 
+        // Đảm bảo user luôn thuộc server mặc định (kể cả tài khoản cũ
+        // được tạo trước khi có tính năng server/channel).
+        db_.add_member(db_.default_server_id(), user_id_);
+
         send_op("auth.ok", {
             {"user_id",      rec.id},
             {"username",     rec.username},
