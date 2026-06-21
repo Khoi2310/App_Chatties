@@ -6,6 +6,16 @@ namespace chatties {
 namespace server {
 namespace db {
 
+// Cắt chuỗi an toàn theo ranh giới UTF-8 (tránh cắt giữa 1 ký tự/emoji).
+static std::string make_excerpt(const std::string& s, std::size_t max_bytes = 60) {
+    if (s.size() <= max_bytes) return s;
+    std::size_t cut = max_bytes;
+    while (cut > 0 && (static_cast<unsigned char>(s[cut]) & 0xC0) == 0x80) {
+        --cut;
+    }
+    return s.substr(0, cut) + "…";
+}
+
 Database::Database(const std::string& path)
     : db_(path, SQLite::OPEN_READWRITE | SQLite::OPEN_CREATE)
 {
@@ -33,6 +43,9 @@ void Database::run_migrations() {
         "  author_id   INTEGER NOT NULL,"
         "  content     TEXT NOT NULL,"
         "  created_at  INTEGER NOT NULL,"
+        "  reply_to_id INTEGER,"
+        "  edited_at   INTEGER,"
+        "  deleted     INTEGER NOT NULL DEFAULT 0,"
         "  FOREIGN KEY (author_id) REFERENCES users(id)"
         ")"
     );
@@ -40,6 +53,15 @@ void Database::run_migrations() {
     db_.exec(
         "CREATE INDEX IF NOT EXISTS idx_messages_channel "
         "ON messages(channel_id, id)"
+    );
+
+    db_.exec(
+        "CREATE TABLE IF NOT EXISTS reactions ("
+        "  message_id INTEGER NOT NULL,"
+        "  user_id    INTEGER NOT NULL,"
+        "  emoji      TEXT    NOT NULL,"
+        "  PRIMARY KEY (message_id, user_id, emoji)"
+        ")"
     );
 
     db_.exec(
@@ -147,25 +169,79 @@ std::string Database::get_password_hash(uint32_t user_id) {
 uint32_t Database::insert_message(uint32_t channel_id,
                                   uint32_t author_id,
                                   const std::string& content,
-                                  uint32_t created_at) {
+                                  uint32_t created_at,
+                                  uint32_t reply_to_id) {
     SQLite::Statement q(db_,
-        "INSERT INTO messages (channel_id, author_id, content, created_at) "
-        "VALUES (?, ?, ?, ?)");
+        "INSERT INTO messages (channel_id, author_id, content, created_at, reply_to_id) "
+        "VALUES (?, ?, ?, ?, ?)");
     q.bind(1, channel_id);
     q.bind(2, author_id);
     q.bind(3, content);
     q.bind(4, created_at);
+    if (reply_to_id != 0) q.bind(5, reply_to_id);
+    else                  q.bind(5);   // NULL
     q.exec();
     return static_cast<uint32_t>(db_.getLastInsertRowid());
+}
+
+bool Database::reply_preview(uint32_t message_id,
+                             std::string& out_username,
+                             std::string& out_excerpt) {
+    SQLite::Statement q(db_,
+        "SELECT u.username, m.content, m.deleted FROM messages m "
+        "JOIN users u ON u.id = m.author_id WHERE m.id = ?");
+    q.bind(1, message_id);
+    if (q.executeStep()) {
+        out_username = q.getColumn(0).getString();
+        out_excerpt  = (q.getColumn(2).getInt() != 0)
+            ? std::string("[deleted]")
+            : make_excerpt(q.getColumn(1).getString());
+        return true;
+    }
+    return false;
+}
+
+void Database::update_message(uint32_t message_id, const std::string& content,
+                              uint32_t edited_at) {
+    SQLite::Statement q(db_,
+        "UPDATE messages SET content = ?, edited_at = ? WHERE id = ?");
+    q.bind(1, content);
+    q.bind(2, edited_at);
+    q.bind(3, message_id);
+    q.exec();
+}
+
+void Database::delete_message(uint32_t message_id) {
+    SQLite::Statement q(db_, "UPDATE messages SET deleted = 1 WHERE id = ?");
+    q.bind(1, message_id);
+    q.exec();
+}
+
+uint32_t Database::message_author(uint32_t message_id) {
+    SQLite::Statement q(db_, "SELECT author_id FROM messages WHERE id = ?");
+    q.bind(1, message_id);
+    if (q.executeStep()) return q.getColumn(0).getUInt();
+    return 0;
+}
+
+uint32_t Database::message_channel(uint32_t message_id) {
+    SQLite::Statement q(db_, "SELECT channel_id FROM messages WHERE id = ?");
+    q.bind(1, message_id);
+    if (q.executeStep()) return q.getColumn(0).getUInt();
+    return 0;
 }
 
 std::vector<MessageRecord> Database::recent_messages(uint32_t channel_id, int limit) {
     std::vector<MessageRecord> result;
 
     SQLite::Statement q(db_,
-        "SELECT m.id, m.channel_id, m.author_id, u.username, m.content, m.created_at "
+        "SELECT m.id, m.channel_id, m.author_id, u.username, m.content, m.created_at, "
+        "       m.edited_at, m.deleted, "
+        "       m.reply_to_id, ru.username, rm.content, rm.deleted "
         "FROM messages m "
         "JOIN users u ON u.id = m.author_id "
+        "LEFT JOIN messages rm ON rm.id = m.reply_to_id "
+        "LEFT JOIN users    ru ON ru.id = rm.author_id "
         "WHERE m.channel_id = ? "
         "ORDER BY m.id DESC "
         "LIMIT ?");
@@ -180,12 +256,74 @@ std::vector<MessageRecord> Database::recent_messages(uint32_t channel_id, int li
         rec.author_name = q.getColumn(3).getString();
         rec.content     = q.getColumn(4).getString();
         rec.created_at  = q.getColumn(5).getUInt();
+        rec.edited_at   = q.getColumn(6).isNull() ? 0 : q.getColumn(6).getUInt();
+        rec.deleted     = q.getColumn(7).getInt() != 0;
+        if (rec.deleted) rec.content.clear();    // không trả nội dung đã xóa
+        rec.reply_to_id = q.getColumn(8).isNull() ? 0 : q.getColumn(8).getUInt();
+        if (rec.reply_to_id != 0) {
+            rec.reply_username = q.getColumn(9).getString();
+            bool reply_deleted = q.getColumn(11).getInt() != 0;
+            rec.reply_excerpt  = reply_deleted
+                ? std::string("[deleted]")
+                : make_excerpt(q.getColumn(10).getString());
+        }
         result.push_back(std::move(rec));
     }
 
     // Đảo lại để có thứ tự tăng dần theo thời gian.
     std::reverse(result.begin(), result.end());
+
+    // Gắn reaction cho từng tin.
+    for (auto& rec : result) {
+        rec.reactions = reactions_for(rec.id);
+    }
     return result;
+}
+
+void Database::add_reaction(uint32_t message_id, uint32_t user_id,
+                            const std::string& emoji) {
+    SQLite::Statement q(db_,
+        "INSERT OR IGNORE INTO reactions (message_id, user_id, emoji) "
+        "VALUES (?, ?, ?)");
+    q.bind(1, message_id);
+    q.bind(2, user_id);
+    q.bind(3, emoji);
+    q.exec();
+}
+
+void Database::remove_reaction(uint32_t message_id, uint32_t user_id,
+                               const std::string& emoji) {
+    SQLite::Statement q(db_,
+        "DELETE FROM reactions WHERE message_id = ? AND user_id = ? AND emoji = ?");
+    q.bind(1, message_id);
+    q.bind(2, user_id);
+    q.bind(3, emoji);
+    q.exec();
+}
+
+bool Database::reaction_exists(uint32_t message_id, uint32_t user_id,
+                               const std::string& emoji) {
+    SQLite::Statement q(db_,
+        "SELECT 1 FROM reactions WHERE message_id = ? AND user_id = ? AND emoji = ?");
+    q.bind(1, message_id);
+    q.bind(2, user_id);
+    q.bind(3, emoji);
+    return q.executeStep();
+}
+
+std::vector<ReactionCount> Database::reactions_for(uint32_t message_id) {
+    std::vector<ReactionCount> out;
+    SQLite::Statement q(db_,
+        "SELECT emoji, COUNT(*) FROM reactions WHERE message_id = ? "
+        "GROUP BY emoji ORDER BY COUNT(*) DESC, emoji");
+    q.bind(1, message_id);
+    while (q.executeStep()) {
+        ReactionCount r;
+        r.emoji = q.getColumn(0).getString();
+        r.count = q.getColumn(1).getUInt();
+        out.push_back(std::move(r));
+    }
+    return out;
 }
 
 uint32_t Database::create_server(const std::string& name, uint32_t owner_id) {
@@ -223,6 +361,22 @@ bool Database::is_member(uint32_t user_id, uint32_t server_id) {
     q.bind(1, user_id);
     q.bind(2, server_id);
     return q.executeStep();
+}
+
+bool Database::server_exists(uint32_t server_id) {
+    SQLite::Statement q(db_, "SELECT 1 FROM servers WHERE id = ?");
+    q.bind(1, server_id);
+    return q.executeStep();
+}
+
+std::unordered_set<uint32_t> Database::member_ids(uint32_t server_id) {
+    std::unordered_set<uint32_t> out;
+    SQLite::Statement q(db_,
+        "SELECT user_id FROM server_members WHERE server_id = ?");
+    q.bind(1, server_id);
+    while (q.executeStep())
+        out.insert(q.getColumn(0).getUInt());
+    return out;
 }
 
 std::vector<ServerRecord> Database::servers_for_user(uint32_t user_id) {

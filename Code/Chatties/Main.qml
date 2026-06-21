@@ -6,8 +6,8 @@ import Chatties
 ApplicationWindow {
     id: window
     visible: true
-    width: 520
-    height: 620
+    width: 860
+    height: 640
     title: qsTr("Chatties")
     color: Theme.background
 
@@ -17,7 +17,7 @@ ApplicationWindow {
 
     property bool loggedIn: false
     property var servers: []          // [{id, name, channels:[{id,name}]}]
-    property int currentChannelId: 0
+    property int userId: 0
 
     AuthView {
         anchors.fill: parent
@@ -27,25 +27,20 @@ ApplicationWindow {
     ChatView {
         anchors.fill: parent
         visible: window.loggedIn
+        servers: window.servers
+        userId: window.userId
     }
 
     Connections {
         target: chatClient
-        function onAuthOk(userId, username, displayName) { window.loggedIn = true }
+        function onAuthOk(userId, username, displayName) {
+            window.userId = userId
+            window.loggedIn = true
+        }
         function onDisconnected() {
             window.loggedIn = false
             window.servers = []
-            window.currentChannelId = 0
         }
-        function onServersReceived(servers) {
-            window.servers = servers
-            // Tự chọn channel đầu tiên nếu chưa chọn channel nào.
-            if (window.currentChannelId === 0
-                    && servers.length > 0
-                    && servers[0].channels.length > 0) {
-                window.currentChannelId = servers[0].channels[0].id
-                chatClient.selectChannel(window.currentChannelId)
-            }
-        }
+        function onServersReceived(servers) { window.servers = servers }
     }
 }

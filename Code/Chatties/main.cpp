@@ -22,6 +22,12 @@ int main(int argc, char* argv[])
                      });
     QObject::connect(&chatClient, &ChatClient::messageReceived,
                      &messageModel, &MessageModel::appendMessage);
+    QObject::connect(&chatClient, &ChatClient::messageUpdated,
+                     &messageModel, &MessageModel::updateMessage);
+    QObject::connect(&chatClient, &ChatClient::messageDeleted,
+                     &messageModel, &MessageModel::markDeleted);
+    QObject::connect(&chatClient, &ChatClient::reactionUpdated,
+                     &messageModel, &MessageModel::setReactions);
 
     QQmlApplicationEngine engine;
     engine.rootContext()->setContextProperty("chatClient",   &chatClient);

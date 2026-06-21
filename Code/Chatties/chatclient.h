@@ -5,6 +5,7 @@
 #include <QString>
 #include <QJsonObject>
 #include <QJsonArray>
+#include <QVariantList>
 
 class ChatClient : public QObject {
     Q_OBJECT
@@ -20,7 +21,10 @@ public:
                                   const QString& password,
                                   const QString& displayName);
     Q_INVOKABLE void login(const QString& username, const QString& password);
-    Q_INVOKABLE void sendMessage(const QString& content);
+    Q_INVOKABLE void sendMessage(const QString& content, int replyToId = 0);
+    Q_INVOKABLE void editMessage(int messageId, const QString& content);
+    Q_INVOKABLE void deleteMessage(int messageId);
+    Q_INVOKABLE void toggleReaction(int messageId, const QString& emoji);
 
     // Server (guild) & channel
     Q_INVOKABLE void createServer(const QString& name);
@@ -36,6 +40,9 @@ signals:
     void serversReceived(QJsonArray servers);
     void channelHistory(int channelId, QJsonArray messages);
     void messageReceived(QJsonObject message);
+    void messageUpdated(int id, QString content, qint64 editedAt);
+    void messageDeleted(int id);
+    void reactionUpdated(int messageId, QVariantList reactions);
     void errorReceived(QString reason);
 
 private slots:

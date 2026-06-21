@@ -5,6 +5,7 @@
 #include <string>
 #include <vector>
 #include <optional>
+#include <unordered_set>
 #include <SQLiteCpp/SQLiteCpp.h>
 
 namespace chatties {
@@ -18,6 +19,11 @@ struct UserRecord {
     std::string display_name;
 };
 
+struct ReactionCount {
+    std::string emoji;
+    uint32_t    count;
+};
+
 struct MessageRecord {
     uint32_t    id;
     uint32_t    channel_id;
@@ -25,6 +31,12 @@ struct MessageRecord {
     std::string author_name;
     std::string content;
     uint32_t    created_at;
+    uint32_t    reply_to_id = 0;     // 0 = không phải trả lời
+    std::string reply_username;      // preview: ai được trả lời
+    std::string reply_excerpt;       // preview: trích nội dung
+    uint32_t    edited_at = 0;       // 0 = chưa sửa
+    bool        deleted   = false;
+    std::vector<ReactionCount> reactions;
 };
 
 struct ServerRecord {
@@ -64,16 +76,38 @@ public:
     uint32_t insert_message(uint32_t channel_id,
                             uint32_t author_id,
                             const std::string& content,
-                            uint32_t created_at);
+                            uint32_t created_at,
+                            uint32_t reply_to_id = 0);
 
     // Lấy `limit` tin nhắn gần nhất của channel, sắp xếp tăng dần theo thời gian.
     std::vector<MessageRecord> recent_messages(uint32_t channel_id, int limit);
+
+    // Lấy preview của tin được trả lời; false nếu không tồn tại.
+    bool reply_preview(uint32_t message_id,
+                       std::string& out_username,
+                       std::string& out_excerpt);
+
+    // Sửa / xóa (mềm) tin nhắn.
+    void     update_message(uint32_t message_id, const std::string& content, uint32_t edited_at);
+    void     delete_message(uint32_t message_id);
+    uint32_t message_author(uint32_t message_id);   // 0 nếu không tồn tại
+    uint32_t message_channel(uint32_t message_id);  // 0 nếu không tồn tại
+
+    // ─── Reaction ────────────────────────────────────────────────
+    void add_reaction(uint32_t message_id, uint32_t user_id, const std::string& emoji);
+    void remove_reaction(uint32_t message_id, uint32_t user_id, const std::string& emoji);
+    bool reaction_exists(uint32_t message_id, uint32_t user_id, const std::string& emoji);
+    std::vector<ReactionCount> reactions_for(uint32_t message_id);
 
     // ─── Server (guild) & Channel ────────────────────────────────
     uint32_t create_server(const std::string& name, uint32_t owner_id);
     uint32_t create_channel(uint32_t server_id, const std::string& name);
     void     add_member(uint32_t server_id, uint32_t user_id);
     bool     is_member(uint32_t user_id, uint32_t server_id);
+    bool     server_exists(uint32_t server_id);
+
+    // Returns the set of user_ids that are members of server_id (single query).
+    std::unordered_set<uint32_t> member_ids(uint32_t server_id);
 
     std::vector<ServerRecord>  servers_for_user(uint32_t user_id);
     std::vector<ChannelRecord> channels_for_server(uint32_t server_id);

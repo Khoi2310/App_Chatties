@@ -22,8 +22,8 @@ Item {
         TabBar {
             id: tabBar
             Layout.fillWidth: true
-            TabButton { text: qsTr("Đăng nhập") }
-            TabButton { text: qsTr("Đăng ký") }
+            TabButton { text: qsTr("Login") }
+            TabButton { text: qsTr("Register") }
         }
 
         StackLayout {
@@ -36,16 +36,16 @@ Item {
                 TextField {
                     id: loginUsername
                     Layout.fillWidth: true
-                    placeholderText: qsTr("Tên đăng nhập")
+                    placeholderText: qsTr("Username")
                 }
                 TextField {
                     id: loginPassword
                     Layout.fillWidth: true
-                    placeholderText: qsTr("Mật khẩu")
+                    placeholderText: qsTr("Password")
                     echoMode: TextInput.Password
                 }
                 Button {
-                    text: qsTr("Đăng nhập")
+                    text: qsTr("Login")
                     Layout.fillWidth: true
                     highlighted: true
                     onClicked: {
@@ -59,29 +59,29 @@ Item {
             // ── Tab Đăng ký ──
             ColumnLayout {
                 spacing: Theme.spacing
-                TextField { id: regUsername; Layout.fillWidth: true; placeholderText: qsTr("Tên đăng nhập") }
+                TextField { id: regUsername; Layout.fillWidth: true; placeholderText: qsTr("Username") }
                 TextField { id: regEmail;    Layout.fillWidth: true; placeholderText: qsTr("Email") }
-                TextField { id: regDisplay;  Layout.fillWidth: true; placeholderText: qsTr("Tên hiển thị") }
+                TextField { id: regDisplay;  Layout.fillWidth: true; placeholderText: qsTr("Display name") }
                 TextField {
                     id: regPassword
                     Layout.fillWidth: true
-                    placeholderText: qsTr("Mật khẩu")
+                    placeholderText: qsTr("Password")
                     echoMode: TextInput.Password
                 }
                 TextField {
                     id: regConfirm
                     Layout.fillWidth: true
-                    placeholderText: qsTr("Xác nhận mật khẩu")
+                    placeholderText: qsTr("Confirm password")
                     echoMode: TextInput.Password
                 }
                 Button {
-                    text: qsTr("Đăng ký")
+                    text: qsTr("Register")
                     Layout.fillWidth: true
                     highlighted: true
                     onClicked: {
                         errorLabel.text = ""
                         if (regPassword.text !== regConfirm.text) {
-                            errorLabel.text = qsTr("⚠️ Mật khẩu xác nhận không khớp.")
+                            errorLabel.text = qsTr("⚠️ Passwords do not match.")
                             return
                         }
                         chatClient.registerUser(regUsername.text.trim(),

@@ -5,6 +5,7 @@ QtObject {
     // ── Màu (phong cách tối kiểu Discord) ──
     readonly property color background:  "#313338"
     readonly property color surface:     "#2b2d31"
+    readonly property color serverBar:   "#1f2023"
     readonly property color inputBg:     "#383a40"
     readonly property color accent:      "#5865f2"
     readonly property color textPrimary: "#f2f3f5"

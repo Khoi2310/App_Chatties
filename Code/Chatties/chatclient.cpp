@@ -1,5 +1,6 @@
 #include "chatclient.h"
 #include <QJsonDocument>
+#include <QVariantMap>
 
 ChatClient::ChatClient(QObject* parent)
     : QObject(parent)
@@ -70,12 +71,34 @@ void ChatClient::login(const QString& username, const QString& password) {
     sendOp("auth.login", data);
 }
 
-void ChatClient::sendMessage(const QString& content) {
+void ChatClient::sendMessage(const QString& content, int replyToId) {
     if (currentChannelId_ == 0) return;   // chưa chọn channel
     QJsonObject data;
     data["channel_id"] = currentChannelId_;
     data["content"]    = content;
+    if (replyToId != 0)
+        data["reply_to_id"] = replyToId;
     sendOp("message.create", data);
+}
+
+void ChatClient::editMessage(int messageId, const QString& content) {
+    QJsonObject data;
+    data["message_id"] = messageId;
+    data["content"]    = content;
+    sendOp("message.update", data);
+}
+
+void ChatClient::deleteMessage(int messageId) {
+    QJsonObject data;
+    data["message_id"] = messageId;
+    sendOp("message.delete", data);
+}
+
+void ChatClient::toggleReaction(int messageId, const QString& emoji) {
+    QJsonObject data;
+    data["message_id"] = messageId;
+    data["emoji"]      = emoji;
+    sendOp("reaction.toggle", data);
 }
 
 void ChatClient::createServer(const QString& name) {
@@ -143,6 +166,23 @@ void ChatClient::onReadyRead() {
                                 data["messages"].toArray());
         } else if (op == "message.create") {
             emit messageReceived(data);
+        } else if (op == "message.update") {
+            emit messageUpdated(data["id"].toInt(),
+                                data["content"].toString(),
+                                static_cast<qint64>(data["edited_at"].toDouble()));
+        } else if (op == "message.delete") {
+            emit messageDeleted(data["id"].toInt());
+        } else if (op == "reaction.update") {
+            QVariantList list;
+            const QJsonArray arr = data["reactions"].toArray();
+            for (const auto& v : arr) {
+                const QJsonObject o = v.toObject();
+                QVariantMap m;
+                m["emoji"] = o["emoji"].toString();
+                m["count"] = o["count"].toInt();
+                list.append(m);
+            }
+            emit reactionUpdated(data["message_id"].toInt(), list);
         } else if (op == "error") {
             emit errorReceived(data["reason"].toString());
         }

@@ -6,6 +6,7 @@
 #include <iostream>
 #include <algorithm>
 #include <chrono>
+#include <unordered_set>
 #include <nlohmann/json.hpp>
 
 namespace asio = boost::asio;
@@ -44,12 +45,20 @@ public:
         return state_ == State::Authenticated && current_channel_id_ == channel_id;
     }
 
+    // Gửi lại danh sách server/channel nếu user_id_ nằm trong tập pre-fetched.
+    void refresh_ready_if_user_in(const std::unordered_set<uint32_t>& members) {
+        if (state_ == State::Authenticated && members.count(user_id_))
+            send_ready();
+    }
+
 private:
     void send_op(const std::string& op, const nlohmann::json& data) {
         nlohmann::json env;
         env["op"]   = op;
         env["data"] = data;
-        deliver(env.dump() + "\n");
+        // error_handler::replace: tránh ném lỗi nếu có UTF-8 không hợp lệ.
+        deliver(env.dump(-1, ' ', false,
+                         nlohmann::json::error_handler_t::replace) + "\n");
     }
 
     void send_error(const std::string& reason) {
@@ -86,9 +95,12 @@ private:
                 if (op == "auth.register")   handle_register(data);
                 else if (op == "auth.login") handle_login(data);
                 else send_op("auth.error",
-                             { {"reason", "Bạn cần đăng nhập trước."} });
+                             { {"reason", "You must log in first."} });
             } else { // Authenticated
                 if      (op == "message.create") handle_message_create(data);
+                else if (op == "message.update") handle_message_update(data);
+                else if (op == "message.delete") handle_message_delete(data);
+                else if (op == "reaction.toggle") handle_reaction_toggle(data);
                 else if (op == "channel.select") handle_channel_select(data);
                 else if (op == "server.create")  handle_server_create(data);
                 else if (op == "server.join")    handle_server_join(data);
@@ -110,7 +122,7 @@ private:
         auto rec = user_handler_.register_user(username, email, password, display_name);
         if (rec) on_auth_success(*rec);
         else send_op("auth.error",
-                     { {"reason", "Đăng ký thất bại (username/email đã tồn tại hoặc dữ liệu không hợp lệ)."} });
+                     { {"reason", "Registration failed (username/email already taken or invalid data)."} });
     }
 
     void handle_login(const nlohmann::json& data) {
@@ -120,7 +132,7 @@ private:
         auto rec = user_handler_.authenticate(username, password);
         if (rec) on_auth_success(*rec);
         else send_op("auth.error",
-                     { {"reason", "Sai tên đăng nhập hoặc mật khẩu."} });
+                     { {"reason", "Incorrect username or password."} });
     }
 
     void on_auth_success(const db::UserRecord& rec) {
@@ -163,7 +175,7 @@ private:
         uint32_t channel_id = data.value("channel_id", 0u);
         uint32_t server_id  = db_.channel_server_id(channel_id);
         if (server_id == 0 || !db_.is_member(user_id_, server_id)) {
-            send_error("Không có quyền truy cập channel.");
+            send_error("You don't have access to this channel.");
             return;
         }
         current_channel_id_ = channel_id;
@@ -178,13 +190,14 @@ private:
 
     // ── Gửi tin nhắn ─────────────────────────────────────────────
     void handle_message_create(const nlohmann::json& data) {
-        uint32_t channel_id = data.value("channel_id", 0u);
-        std::string content = data.value("content", std::string());
+        uint32_t channel_id  = data.value("channel_id", 0u);
+        std::string content  = data.value("content", std::string());
+        uint32_t reply_to_id = data.value("reply_to_id", 0u);
         if (content.empty()) return;
 
         uint32_t server_id = db_.channel_server_id(channel_id);
         if (server_id == 0 || !db_.is_member(user_id_, server_id)) {
-            send_error("Không có quyền gửi vào channel.");
+            send_error("You can't post in this channel.");
             return;
         }
         if (content.size() > chatties::MAX_MESSAGE_LENGTH) {
@@ -195,7 +208,7 @@ private:
             std::chrono::duration_cast<std::chrono::seconds>(
                 std::chrono::system_clock::now().time_since_epoch()).count());
 
-        uint32_t id = db_.insert_message(channel_id, user_id_, content, ts);
+        uint32_t id = db_.insert_message(channel_id, user_id_, content, ts, reply_to_id);
 
         db::MessageRecord rec;
         rec.id          = id;
@@ -204,6 +217,10 @@ private:
         rec.author_name = display_name_;
         rec.content     = content;
         rec.created_at  = ts;
+        rec.reply_to_id = reply_to_id;
+        if (reply_to_id != 0) {
+            db_.reply_preview(reply_to_id, rec.reply_username, rec.reply_excerpt);
+        }
 
         utils::Logger::instance().info(
             "[Message] ch" + std::to_string(channel_id) + " " +
@@ -222,43 +239,137 @@ private:
         }
     }
 
+    // Phát 1 sự kiện tới mọi client đang xem channel.
+    void broadcast_to_channel(uint32_t channel_id, const std::string& op,
+                              const nlohmann::json& data) {
+        nlohmann::json env;
+        env["op"]   = op;
+        env["data"] = data;
+        std::string payload = env.dump(-1, ' ', false,
+                                       nlohmann::json::error_handler_t::replace) + "\n";
+        for (auto& conn : connections_) {
+            if (conn->is_viewing(channel_id)) conn->deliver(payload);
+        }
+    }
+
+    void handle_message_update(const nlohmann::json& data) {
+        uint32_t id         = data.value("message_id", 0u);
+        std::string content = data.value("content", std::string());
+        if (id == 0 || content.empty()) return;
+        if (db_.message_author(id) != user_id_) {
+            send_error("You can't edit another user's message.");
+            return;
+        }
+        if (content.size() > chatties::MAX_MESSAGE_LENGTH) {
+            content = content.substr(0, chatties::MAX_MESSAGE_LENGTH);
+        }
+        uint32_t ts = static_cast<uint32_t>(
+            std::chrono::duration_cast<std::chrono::seconds>(
+                std::chrono::system_clock::now().time_since_epoch()).count());
+
+        db_.update_message(id, content, ts);
+        uint32_t channel_id = db_.message_channel(id);
+        broadcast_to_channel(channel_id, "message.update",
+            { {"id", id}, {"content", content}, {"edited_at", ts} });
+    }
+
+    void handle_message_delete(const nlohmann::json& data) {
+        uint32_t id = data.value("message_id", 0u);
+        if (id == 0) return;
+        if (db_.message_author(id) != user_id_) {
+            send_error("You can't delete another user's message.");
+            return;
+        }
+        uint32_t channel_id = db_.message_channel(id);
+        db_.delete_message(id);
+        broadcast_to_channel(channel_id, "message.delete", { {"id", id} });
+    }
+
+    void handle_reaction_toggle(const nlohmann::json& data) {
+        uint32_t id      = data.value("message_id", 0u);
+        std::string emoji = data.value("emoji", std::string());
+        if (id == 0 || emoji.empty()) return;
+
+        uint32_t channel_id = db_.message_channel(id);
+        uint32_t server_id  = db_.channel_server_id(channel_id);
+        if (server_id == 0 || !db_.is_member(user_id_, server_id)) {
+            send_error("You don't have access to this channel.");
+            return;
+        }
+
+        // Bật/tắt reaction của user này.
+        if (db_.reaction_exists(id, user_id_, emoji))
+            db_.remove_reaction(id, user_id_, emoji);
+        else
+            db_.add_reaction(id, user_id_, emoji);
+
+        broadcast_to_channel(channel_id, "reaction.update", {
+            {"message_id", id},
+            {"reactions",  reactions_to_json(db_.reactions_for(id))}
+        });
+    }
+
     // ── Tạo / tham gia server, tạo channel ───────────────────────
     void handle_server_create(const nlohmann::json& data) {
         std::string name = data.value("name", std::string());
-        if (name.empty()) { send_error("Tên server không hợp lệ."); return; }
+        if (name.empty() || name.size() > chatties::MAX_SERVER_NAME_LENGTH) {
+            send_error("Invalid server name."); return;
+        }
 
         uint32_t sid = db_.create_server(name, user_id_);
         db_.create_channel(sid, "general");
         db_.add_member(sid, user_id_);
-        send_ready();
+        auto members = db_.member_ids(sid);
+        for (auto& conn : connections_) conn->refresh_ready_if_user_in(members);
     }
 
     void handle_server_join(const nlohmann::json& data) {
         uint32_t server_id = data.value("server_id", 0u);
-        if (server_id == 0) { send_error("server_id không hợp lệ."); return; }
+        if (server_id == 0) { send_error("Invalid server_id."); return; }
+        if (!db_.server_exists(server_id)) { send_error("Server does not exist."); return; }
+        if (db_.is_member(user_id_, server_id)) { send_ready(); return; }
         db_.add_member(server_id, user_id_);
-        send_ready();
+        auto members = db_.member_ids(server_id);
+        for (auto& conn : connections_) conn->refresh_ready_if_user_in(members);
     }
 
     void handle_channel_create(const nlohmann::json& data) {
         uint32_t server_id = data.value("server_id", 0u);
         std::string name   = data.value("name", std::string());
-        if (name.empty() || !db_.is_member(user_id_, server_id)) {
-            send_error("Không thể tạo channel.");
+        if (server_id == 0
+                || name.empty()
+                || name.size() > chatties::MAX_CHANNEL_NAME_LENGTH
+                || !db_.is_member(user_id_, server_id)) {
+            send_error("Cannot create channel.");
             return;
         }
         db_.create_channel(server_id, name);
-        send_ready();
+        auto members = db_.member_ids(server_id);
+        for (auto& conn : connections_) conn->refresh_ready_if_user_in(members);
+    }
+
+    static nlohmann::json reactions_to_json(const std::vector<db::ReactionCount>& rs) {
+        nlohmann::json arr = nlohmann::json::array();
+        for (const auto& r : rs) {
+            arr.push_back({ {"emoji", r.emoji}, {"count", r.count} });
+        }
+        return arr;
     }
 
     nlohmann::json message_to_json(const db::MessageRecord& m) {
         return {
-            {"id",         m.id},
-            {"channel_id", m.channel_id},
-            {"author_id",  m.author_id},
-            {"username",   m.author_name},
-            {"content",    m.content},
-            {"timestamp",  m.created_at}
+            {"id",             m.id},
+            {"channel_id",     m.channel_id},
+            {"author_id",      m.author_id},
+            {"username",       m.author_name},
+            {"content",        m.content},
+            {"timestamp",      m.created_at},
+            {"reply_to_id",    m.reply_to_id},
+            {"reply_username", m.reply_username},
+            {"reply_excerpt",  m.reply_excerpt},
+            {"edited_at",      m.edited_at},
+            {"deleted",        m.deleted},
+            {"reactions",      reactions_to_json(m.reactions)}
         };
     }
 
