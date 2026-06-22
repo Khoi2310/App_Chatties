@@ -202,8 +202,16 @@ Item {
                 }
 
                 delegate: Item {
+                    id: msgItem
                     width: ListView.view ? ListView.view.width : 0
-                    implicitHeight: msgCol.implicitHeight
+                    implicitHeight: Math.max(msgCol.implicitHeight, 32)
+
+                    // Lưu lại giá trị từ model (Popup nằm ở overlay nên không
+                    // truy cập được "model" trực tiếp bên trong).
+                    property int    mId:      model.messageId
+                    property int    mAuthor:  model.authorId
+                    property string mUser:    model.username
+                    property string mContent: model.content
 
                     HoverHandler { id: msgHover }
 
@@ -285,15 +293,18 @@ Item {
                         anchors.right: parent.right
                         anchors.top: parent.top
                         anchors.rightMargin: 8
-                        anchors.topMargin: 2
-                        width: 28; height: 28; radius: 14
+                        anchors.topMargin: 0
+                        width: 26; height: 26; radius: 13
+                        z: 10
                         visible: (msgHover.hovered || actionMenu.opened) && !model.deleted
-                        color: moreArea.containsMouse || actionMenu.opened ? Theme.inputBg : "transparent"
+                        color: (moreArea.containsMouse || actionMenu.opened)
+                               ? Theme.inputBg : "transparent"
 
                         Label {
                             anchors.centerIn: parent
                             text: "⋯"
-                            color: Theme.textMuted
+                            color: (moreArea.containsMouse || actionMenu.opened)
+                                   ? Theme.textPrimary : Theme.textMuted
                             font.pixelSize: 20
                         }
                         MouseArea {
@@ -306,51 +317,174 @@ Item {
 
                         Popup {
                             id: actionMenu
+                            width: 212
                             x: moreBtn.width - width
                             y: moreBtn.height + 2
-                            padding: 4
+                            padding: 6
+                            onAboutToShow: {
+                                var topInList = moreBtn.mapToItem(list, 0, 0).y
+                                var spaceBelow = list.height - topInList
+                                y = (spaceBelow > height + 40) ? (moreBtn.height + 2) : (-height - 2)
+                            }
                             modal: false
                             background: Rectangle {
                                 color: Theme.surface
                                 radius: Theme.radius
-                                border.color: Theme.inputBg
+                                border.color: Theme.serverBar
                             }
-                            contentItem: Row {
+                            contentItem: Column {
+                                width: parent.width
                                 spacing: 2
-                                Button {
-                                    text: "😀"; flat: true
-                                    implicitWidth: 32; implicitHeight: 32; padding: 0; font.pixelSize: 16
-                                    onClicked: { actionMenu.close(); reactPopup.open() }
-                                }
-                                Button {
-                                    text: "↩"; flat: true
-                                    implicitWidth: 32; implicitHeight: 32; padding: 0; font.pixelSize: 16
-                                    onClicked: {
-                                        actionMenu.close()
-                                        root.editingId = 0
-                                        root.replyingToId = model.messageId
-                                        root.replyingToName = model.username
-                                        input.forceActiveFocus()
+
+                                // Add Reaction
+                                Rectangle {
+                                    width: parent.width; height: 34; radius: 4
+                                    color: reactArea.containsMouse ? Theme.accent : "transparent"
+                                    Row {
+                                        anchors.fill: parent
+                                        anchors.leftMargin: 10; anchors.rightMargin: 10
+                                        Label {
+                                            text: qsTr("Add Reaction")
+                                            color: Theme.textPrimary
+                                            anchors.verticalCenter: parent.verticalCenter
+                                            width: parent.width - 24
+                                        }
+                                        Label {
+                                            text: "😀"; font.pixelSize: 16
+                                            anchors.verticalCenter: parent.verticalCenter
+                                        }
+                                    }
+                                    MouseArea {
+                                        id: reactArea
+                                        anchors.fill: parent; hoverEnabled: true
+                                        cursorShape: Qt.PointingHandCursor
+                                        onClicked: { actionMenu.close(); reactPopup.open() }
                                     }
                                 }
-                                Button {
-                                    visible: model.authorId === root.userId
-                                    text: "✎"; flat: true
-                                    implicitWidth: 32; implicitHeight: 32; padding: 0; font.pixelSize: 16
-                                    onClicked: {
-                                        actionMenu.close()
-                                        root.replyingToId = 0
-                                        root.replyingToName = ""
-                                        root.editingId = model.messageId
-                                        input.text = model.content
-                                        input.forceActiveFocus()
+                                // Reply
+                                Rectangle {
+                                    width: parent.width; height: 34; radius: 4
+                                    color: replyArea.containsMouse ? Theme.accent : "transparent"
+                                    Row {
+                                        anchors.fill: parent
+                                        anchors.leftMargin: 10; anchors.rightMargin: 10
+                                        Label {
+                                            text: qsTr("Reply")
+                                            color: Theme.textPrimary
+                                            anchors.verticalCenter: parent.verticalCenter
+                                            width: parent.width - 24
+                                        }
+                                        Label {
+                                            text: "↩️"; font.pixelSize: 16
+                                            anchors.verticalCenter: parent.verticalCenter
+                                        }
+                                    }
+                                    MouseArea {
+                                        id: replyArea
+                                        anchors.fill: parent; hoverEnabled: true
+                                        cursorShape: Qt.PointingHandCursor
+                                        onClicked: {
+                                            actionMenu.close()
+                                            root.editingId = 0
+                                            root.replyingToId = msgItem.mId
+                                            root.replyingToName = msgItem.mUser
+                                            input.forceActiveFocus()
+                                        }
                                     }
                                 }
-                                Button {
-                                    visible: model.authorId === root.userId
-                                    text: "🗑"; flat: true
-                                    implicitWidth: 32; implicitHeight: 32; padding: 0; font.pixelSize: 16
-                                    onClicked: { actionMenu.close(); chatClient.deleteMessage(model.messageId) }
+                                // Copy Text
+                                Rectangle {
+                                    width: parent.width; height: 34; radius: 4
+                                    color: copyArea.containsMouse ? Theme.accent : "transparent"
+                                    Row {
+                                        anchors.fill: parent
+                                        anchors.leftMargin: 10; anchors.rightMargin: 10
+                                        Label {
+                                            text: qsTr("Copy Text")
+                                            color: Theme.textPrimary
+                                            anchors.verticalCenter: parent.verticalCenter
+                                            width: parent.width - 24
+                                        }
+                                        Label {
+                                            text: "📋"; font.pixelSize: 16
+                                            anchors.verticalCenter: parent.verticalCenter
+                                        }
+                                    }
+                                    MouseArea {
+                                        id: copyArea
+                                        anchors.fill: parent; hoverEnabled: true
+                                        cursorShape: Qt.PointingHandCursor
+                                        onClicked: { actionMenu.close(); root.copyText(msgItem.mContent) }
+                                    }
+                                }
+
+                                // Separator (chỉ hiện khi là tin của mình)
+                                Rectangle {
+                                    width: parent.width - 8
+                                    anchors.horizontalCenter: parent.horizontalCenter
+                                    height: 1
+                                    color: Theme.serverBar
+                                    visible: msgItem.mAuthor === root.userId
+                                }
+
+                                // Edit
+                                Rectangle {
+                                    visible: msgItem.mAuthor === root.userId
+                                    width: parent.width; height: 34; radius: 4
+                                    color: editArea.containsMouse ? Theme.accent : "transparent"
+                                    Row {
+                                        anchors.fill: parent
+                                        anchors.leftMargin: 10; anchors.rightMargin: 10
+                                        Label {
+                                            text: qsTr("Edit")
+                                            color: Theme.textPrimary
+                                            anchors.verticalCenter: parent.verticalCenter
+                                            width: parent.width - 24
+                                        }
+                                        Label {
+                                            text: "✏️"; font.pixelSize: 16
+                                            anchors.verticalCenter: parent.verticalCenter
+                                        }
+                                    }
+                                    MouseArea {
+                                        id: editArea
+                                        anchors.fill: parent; hoverEnabled: true
+                                        cursorShape: Qt.PointingHandCursor
+                                        onClicked: {
+                                            actionMenu.close()
+                                            root.replyingToId = 0
+                                            root.replyingToName = ""
+                                            root.editingId = msgItem.mId
+                                            input.text = msgItem.mContent
+                                            input.forceActiveFocus()
+                                        }
+                                    }
+                                }
+                                // Delete (đỏ)
+                                Rectangle {
+                                    visible: msgItem.mAuthor === root.userId
+                                    width: parent.width; height: 34; radius: 4
+                                    color: delArea.containsMouse ? Theme.danger : "transparent"
+                                    Row {
+                                        anchors.fill: parent
+                                        anchors.leftMargin: 10; anchors.rightMargin: 10
+                                        Label {
+                                            text: qsTr("Delete")
+                                            color: delArea.containsMouse ? "white" : Theme.danger
+                                            anchors.verticalCenter: parent.verticalCenter
+                                            width: parent.width - 24
+                                        }
+                                        Label {
+                                            text: "🗑️"; font.pixelSize: 16
+                                            anchors.verticalCenter: parent.verticalCenter
+                                        }
+                                    }
+                                    MouseArea {
+                                        id: delArea
+                                        anchors.fill: parent; hoverEnabled: true
+                                        cursorShape: Qt.PointingHandCursor
+                                        onClicked: { actionMenu.close(); chatClient.deleteMessage(msgItem.mId) }
+                                    }
                                 }
                             }
                         }
@@ -359,7 +493,7 @@ Item {
                     // Bảng chọn emoji để thả cảm xúc cho tin nhắn
                     Popup {
                         id: reactPopup
-                        property int msgId: model.messageId
+                        property int msgId: msgItem.mId
                         width: 280
                         padding: 6
                         modal: false
@@ -535,6 +669,15 @@ Item {
                 }
             }
         }
+    }
+
+    // TextEdit ẩn để copy nội dung vào clipboard.
+    TextEdit { id: clipHelper; visible: false }
+    function copyText(t) {
+        clipHelper.text = t
+        clipHelper.selectAll()
+        clipHelper.copy()
+        clipHelper.text = ""
     }
 
     // Escape ký tự HTML để dùng an toàn với Text.RichText.
