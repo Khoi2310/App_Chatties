@@ -18,7 +18,7 @@ qt_add_executable(Chatties
     messagemodel.h
 )
 
-# Theme.qml is a QML singleton (must be marked before qt_add_qml_module).
+# Theme.qml is a QML singleton (must be marked before qt_add_qml_module).//
 set_source_files_properties(Theme.qml PROPERTIES
     QT_QML_SINGLETON_TYPE TRUE)
 
