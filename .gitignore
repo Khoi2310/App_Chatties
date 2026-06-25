@@ -14,8 +14,8 @@ Makefile
 compile_commands.json
 
 # ─── vcpkg ────────────────────────────────────────────────────────
-# The vcpkg submodule itself (./vcpkg) IS tracked via .gitmodules.
-# Only ignore the per-build installed packages it generates.
+# We use a system vcpkg (via VCPKG_ROOT), not an in-repo one.
+vcpkg/
 vcpkg_installed/
 *.vcpkg
 

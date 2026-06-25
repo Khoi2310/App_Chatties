@@ -1,13 +1,9 @@
 cmake_minimum_required(VERSION 3.15)
 
-# Set vcpkg toolchain if not already set
+# Use the system vcpkg toolchain (via VCPKG_ROOT) if a toolchain isn't already
+# provided on the command line (e.g. by VS Code CMake Tools / a preset).
 if(DEFINED ENV{VCPKG_ROOT} AND NOT DEFINED CMAKE_TOOLCHAIN_FILE)
     set(CMAKE_TOOLCHAIN_FILE "$ENV{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake" CACHE STRING "")
-endif()
-
-# If VCPKG_ROOT not set, fall back to the vcpkg submodule at the repo root
-if(NOT DEFINED CMAKE_TOOLCHAIN_FILE)
-    set(CMAKE_TOOLCHAIN_FILE "${CMAKE_CURRENT_SOURCE_DIR}/../vcpkg/scripts/buildsystems/vcpkg.cmake" CACHE STRING "")
 endif()
 
 project(ServerApp LANGUAGES CXX)
