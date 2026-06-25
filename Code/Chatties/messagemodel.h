@@ -20,7 +20,8 @@ public:
         ReplyExcerptRole,
         EditedRole,
         DeletedRole,
-        ReactionsRole
+        ReactionsRole,
+        AttachmentsRole
     };
 
     struct Item {
@@ -34,7 +35,8 @@ public:
         QString replyExcerpt;
         qint64  editedAt  = 0;
         bool    deleted   = false;
-        QVariantList reactions;   // [{emoji, count}]
+        QVariantList reactions;    // [{emoji, count}]
+        QVariantList attachments;  // [{url, kind, filename, size}]
     };
 
     explicit MessageModel(QObject* parent = nullptr);

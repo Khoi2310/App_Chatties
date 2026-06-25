@@ -6,6 +6,7 @@
 #include <vector>
 #include <optional>
 #include <unordered_set>
+#include <mutex>
 #include <SQLiteCpp/SQLiteCpp.h>
 
 namespace chatties {
@@ -24,6 +25,13 @@ struct ReactionCount {
     uint32_t    count;
 };
 
+struct AttachmentRecord {
+    std::string url;
+    std::string kind;       // 'image' | 'gif' | 'file'
+    std::string filename;
+    uint32_t    size = 0;
+};
+
 struct MessageRecord {
     uint32_t    id;
     uint32_t    channel_id;
@@ -37,6 +45,7 @@ struct MessageRecord {
     uint32_t    edited_at = 0;       // 0 = chưa sửa
     bool        deleted   = false;
     std::vector<ReactionCount> reactions;
+    std::vector<AttachmentRecord> attachments;
 };
 
 struct ServerRecord {
@@ -123,6 +132,12 @@ public:
     // Server mặc định (tạo sẵn lúc khởi động).
     uint32_t default_server_id() const { return default_server_id_; }
 
+    // ─── Attachment ────────────────────────────────────────────────
+    void add_attachment(uint32_t message_id, const std::string& url,
+                        const std::string& kind, const std::string& filename,
+                        uint32_t size);
+    std::vector<AttachmentRecord> attachments_for(uint32_t message_id);
+
     // ─── Custom Emoji ──────────────────────────────────────────────
     void add_custom_emoji(const std::string& shortcode, const std::string& image_url);
 
@@ -135,6 +150,10 @@ private:
 
     SQLite::Database db_;
     uint32_t default_server_id_ = 0;
+
+    // Bảo vệ db_ khi truy cập từ nhiều luồng (TCP server + HTTP media server).
+    // Chỉ cần khóa các thao tao GHI để tránh đua getLastInsertRowid().
+    std::mutex db_mutex_;
 };
 
 } // namespace db

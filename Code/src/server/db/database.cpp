@@ -103,6 +103,21 @@ void Database::run_migrations() {
         "  image_url  TEXT NOT NULL"
         ")"
     );
+
+    db_.exec(
+        "CREATE TABLE IF NOT EXISTS attachments ("
+        "  id         INTEGER PRIMARY KEY AUTOINCREMENT,"
+        "  message_id INTEGER NOT NULL,"
+        "  url        TEXT NOT NULL,"
+        "  kind       TEXT NOT NULL,"
+        "  filename   TEXT,"
+        "  size       INTEGER"
+        ")"
+    );
+    db_.exec(
+        "CREATE INDEX IF NOT EXISTS idx_attachments_msg "
+        "ON attachments(message_id)"
+    );
 }
 
 void Database::seed_defaults() {
@@ -123,6 +138,7 @@ std::optional<UserRecord> Database::create_user(const std::string& username,
                                                 const std::string& email,
                                                 const std::string& display_name,
                                                 const std::string& password_hash) {
+    std::lock_guard<std::mutex> lock(db_mutex_);
     try {
         SQLite::Statement q(db_,
             "INSERT INTO users (username, email, display_name, password_hash, created_at) "
@@ -183,6 +199,7 @@ uint32_t Database::insert_message(uint32_t channel_id,
                                   const std::string& content,
                                   uint32_t created_at,
                                   uint32_t reply_to_id) {
+    std::lock_guard<std::mutex> lock(db_mutex_);
     SQLite::Statement q(db_,
         "INSERT INTO messages (channel_id, author_id, content, created_at, reply_to_id) "
         "VALUES (?, ?, ?, ?, ?)");
@@ -215,6 +232,7 @@ bool Database::reply_preview(uint32_t message_id,
 
 void Database::update_message(uint32_t message_id, const std::string& content,
                               uint32_t edited_at) {
+    std::lock_guard<std::mutex> lock(db_mutex_);
     SQLite::Statement q(db_,
         "UPDATE messages SET content = ?, edited_at = ? WHERE id = ?");
     q.bind(1, content);
@@ -224,9 +242,15 @@ void Database::update_message(uint32_t message_id, const std::string& content,
 }
 
 void Database::delete_message(uint32_t message_id) {
+    std::lock_guard<std::mutex> lock(db_mutex_);
     SQLite::Statement q(db_, "UPDATE messages SET deleted = 1 WHERE id = ?");
     q.bind(1, message_id);
     q.exec();
+
+    // Xóa luôn các đính kèm (ảnh/file) gửi kèm tin nhắn này.
+    SQLite::Statement qa(db_, "DELETE FROM attachments WHERE message_id = ?");
+    qa.bind(1, message_id);
+    qa.exec();
 }
 
 uint32_t Database::message_author(uint32_t message_id) {
@@ -285,15 +309,49 @@ std::vector<MessageRecord> Database::recent_messages(uint32_t channel_id, int li
     // Đảo lại để có thứ tự tăng dần theo thời gian.
     std::reverse(result.begin(), result.end());
 
-    // Gắn reaction cho từng tin.
+    // Gắn reaction + attachment cho từng tin (bỏ qua đính kèm của tin đã xóa).
     for (auto& rec : result) {
         rec.reactions = reactions_for(rec.id);
+        if (!rec.deleted) rec.attachments = attachments_for(rec.id);
     }
     return result;
 }
 
+void Database::add_attachment(uint32_t message_id, const std::string& url,
+                              const std::string& kind, const std::string& filename,
+                              uint32_t size) {
+    std::lock_guard<std::mutex> lock(db_mutex_);
+    SQLite::Statement q(db_,
+        "INSERT INTO attachments (message_id, url, kind, filename, size) "
+        "VALUES (?, ?, ?, ?, ?)");
+    q.bind(1, message_id);
+    q.bind(2, url);
+    q.bind(3, kind);
+    q.bind(4, filename);
+    q.bind(5, size);
+    q.exec();
+}
+
+std::vector<AttachmentRecord> Database::attachments_for(uint32_t message_id) {
+    std::vector<AttachmentRecord> out;
+    SQLite::Statement q(db_,
+        "SELECT url, kind, filename, size FROM attachments "
+        "WHERE message_id = ? ORDER BY id");
+    q.bind(1, message_id);
+    while (q.executeStep()) {
+        AttachmentRecord a;
+        a.url      = q.getColumn(0).getString();
+        a.kind     = q.getColumn(1).getString();
+        a.filename = q.getColumn(2).getString();
+        a.size     = q.getColumn(3).getUInt();
+        out.push_back(std::move(a));
+    }
+    return out;
+}
+
 void Database::add_reaction(uint32_t message_id, uint32_t user_id,
                             const std::string& emoji) {
+    std::lock_guard<std::mutex> lock(db_mutex_);
     SQLite::Statement q(db_,
         "INSERT OR IGNORE INTO reactions (message_id, user_id, emoji) "
         "VALUES (?, ?, ?)");
@@ -305,6 +363,7 @@ void Database::add_reaction(uint32_t message_id, uint32_t user_id,
 
 void Database::remove_reaction(uint32_t message_id, uint32_t user_id,
                                const std::string& emoji) {
+    std::lock_guard<std::mutex> lock(db_mutex_);
     SQLite::Statement q(db_,
         "DELETE FROM reactions WHERE message_id = ? AND user_id = ? AND emoji = ?");
     q.bind(1, message_id);
@@ -339,6 +398,7 @@ std::vector<ReactionCount> Database::reactions_for(uint32_t message_id) {
 }
 
 uint32_t Database::create_server(const std::string& name, uint32_t owner_id) {
+    std::lock_guard<std::mutex> lock(db_mutex_);
     SQLite::Statement q(db_,
         "INSERT INTO servers (name, owner_id, created_at) "
         "VALUES (?, ?, strftime('%s','now'))");
@@ -349,6 +409,7 @@ uint32_t Database::create_server(const std::string& name, uint32_t owner_id) {
 }
 
 uint32_t Database::create_channel(uint32_t server_id, const std::string& name) {
+    std::lock_guard<std::mutex> lock(db_mutex_);
     SQLite::Statement q(db_,
         "INSERT INTO channels (server_id, name, position, created_at) "
         "VALUES (?, ?, 0, strftime('%s','now'))");
@@ -359,6 +420,7 @@ uint32_t Database::create_channel(uint32_t server_id, const std::string& name) {
 }
 
 void Database::add_member(uint32_t server_id, uint32_t user_id) {
+    std::lock_guard<std::mutex> lock(db_mutex_);
     SQLite::Statement q(db_,
         "INSERT OR IGNORE INTO server_members (server_id, user_id, joined_at) "
         "VALUES (?, ?, strftime('%s','now'))");
@@ -434,6 +496,7 @@ uint32_t Database::channel_server_id(uint32_t channel_id) {
 }
 
 void Database::add_custom_emoji(const std::string& shortcode, const std::string& image_url) {
+    std::lock_guard<std::mutex> lock(db_mutex_);
     // Dùng INSERT OR REPLACE để tự động cập nhật ảnh nếu shortcode đã tồn tại
     // Chống SQL Injection bằng cơ chế bind tham số của SQLiteCpp
     SQLite::Statement q(db_,

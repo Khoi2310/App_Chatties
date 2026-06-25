@@ -1,11 +1,18 @@
 #include "chatclient.h"
 #include <QJsonDocument>
 #include <QVariantMap>
+#include <QFile>
+#include <QFileInfo>
+#include <QUrl>
+#include <QNetworkRequest>
+#include <QNetworkReply>
+#include <QFileDialog>
 
 ChatClient::ChatClient(QObject* parent)
     : QObject(parent)
     , socket_(new QTcpSocket(this))
     , reconnectTimer_(new QTimer(this))
+    , netManager_(new QNetworkAccessManager(this))
 {
     connect(socket_, &QTcpSocket::connected,
             this,    &ChatClient::onConnected);
@@ -71,14 +78,73 @@ void ChatClient::login(const QString& username, const QString& password) {
     sendOp("auth.login", data);
 }
 
-void ChatClient::sendMessage(const QString& content, int replyToId) {
+void ChatClient::sendMessage(const QString& content, int replyToId,
+                             const QVariantList& attachments) {
     if (currentChannelId_ == 0) return;   // chưa chọn channel
     QJsonObject data;
     data["channel_id"] = currentChannelId_;
     data["content"]    = content;
     if (replyToId != 0)
         data["reply_to_id"] = replyToId;
+    if (!attachments.isEmpty())
+        data["attachments"] = QJsonArray::fromVariantList(attachments);
     sendOp("message.create", data);
+}
+
+QString ChatClient::chooseFile() {
+    return QFileDialog::getOpenFileName(
+        nullptr, tr("Choose a file"), QString(),
+        tr("Images (*.png *.jpg *.jpeg *.gif *.webp);;Video (*.mp4);;All files (*)"));
+}
+
+void ChatClient::uploadAttachment(const QString& localPathOrUrl) {
+    // Chấp nhận cả đường dẫn local lẫn URL "file://" (từ FileDialog).
+    QString path = localPathOrUrl;
+    if (path.startsWith("file:"))
+        path = QUrl(path).toLocalFile();
+
+    QFile file(path);
+    if (!file.open(QIODevice::ReadOnly)) {
+        emit uploadFailed(tr("Cannot open file: ") + path);
+        return;
+    }
+    const QByteArray bytes = file.readAll();
+    file.close();
+
+    const QString suffix = QFileInfo(path).suffix().toLower();
+    QString contentType, kind;
+    if      (suffix == "png")               { contentType = "image/png";  kind = "image"; }
+    else if (suffix == "jpg" || suffix == "jpeg") { contentType = "image/jpeg"; kind = "image"; }
+    else if (suffix == "gif")               { contentType = "image/gif";  kind = "gif"; }
+    else if (suffix == "webp")              { contentType = "image/webp"; kind = "image"; }
+    else if (suffix == "mp4")               { contentType = "video/mp4";  kind = "file"; }
+    else {
+        emit uploadFailed(tr("Unsupported file type: ") + suffix);
+        return;
+    }
+
+    const QString filename = QFileInfo(path).fileName();
+    const int     fileSize = static_cast<int>(bytes.size());
+
+    QNetworkRequest req(QUrl("http://127.0.0.1:8081/upload"));
+    req.setHeader(QNetworkRequest::ContentTypeHeader, contentType);
+
+    QNetworkReply* reply = netManager_->post(req, bytes);
+    connect(reply, &QNetworkReply::finished, this, [this, reply, kind, filename, fileSize]() {
+        reply->deleteLater();
+        if (reply->error() != QNetworkReply::NoError) {
+            emit uploadFailed(reply->errorString());
+            return;
+        }
+        const QJsonObject obj =
+            QJsonDocument::fromJson(reply->readAll()).object();
+        const QString url = obj.value("url").toString();
+        if (url.isEmpty()) {
+            emit uploadFailed(tr("Upload: empty url in response"));
+            return;
+        }
+        emit attachmentUploaded(url, kind, filename, fileSize);
+    });
 }
 
 void ChatClient::editMessage(int messageId, const QString& content) {

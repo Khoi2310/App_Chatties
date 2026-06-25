@@ -6,6 +6,7 @@
 #include <QJsonObject>
 #include <QJsonArray>
 #include <QVariantList>
+#include <QNetworkAccessManager>
 
 class ChatClient : public QObject {
     Q_OBJECT
@@ -21,7 +22,13 @@ public:
                                   const QString& password,
                                   const QString& displayName);
     Q_INVOKABLE void login(const QString& username, const QString& password);
-    Q_INVOKABLE void sendMessage(const QString& content, int replyToId = 0);
+    Q_INVOKABLE void sendMessage(const QString& content, int replyToId = 0,
+                                 const QVariantList& attachments = {});
+
+    // Mở hộp thoại chọn file (native); trả "" nếu hủy.
+    Q_INVOKABLE QString chooseFile();
+    // Tải file lên media server (HTTP); phát attachmentUploaded khi xong.
+    Q_INVOKABLE void uploadAttachment(const QString& localPathOrUrl);
     Q_INVOKABLE void editMessage(int messageId, const QString& content);
     Q_INVOKABLE void deleteMessage(int messageId);
     Q_INVOKABLE void toggleReaction(int messageId, const QString& emoji);
@@ -43,6 +50,8 @@ signals:
     void messageUpdated(int id, QString content, qint64 editedAt);
     void messageDeleted(int id);
     void reactionUpdated(int messageId, QVariantList reactions);
+    void attachmentUploaded(QString url, QString kind, QString filename, int size);
+    void uploadFailed(QString reason);
     void errorReceived(QString reason);
 
 private slots:
@@ -55,9 +64,10 @@ private slots:
 private:
     void sendOp(const QString& op, const QJsonObject& data);
 
-    QTcpSocket* socket_;
-    QTimer*     reconnectTimer_;
-    QString     host_;
-    quint16     port_ = 0;
-    int         currentChannelId_ = 0;
+    QTcpSocket*             socket_;
+    QTimer*                 reconnectTimer_;
+    QNetworkAccessManager*  netManager_;
+    QString                 host_;
+    quint16                 port_ = 0;
+    int                     currentChannelId_ = 0;
 };

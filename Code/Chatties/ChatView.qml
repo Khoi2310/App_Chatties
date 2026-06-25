@@ -26,6 +26,9 @@ Item {
     property int    userId: 0
     property int    editingId: 0
 
+    // Đính kèm đang chờ gửi: [{url, kind, filename, size}]
+    property var    pendingAttachments: []
+
     readonly property var currentChannels:
         (servers.length > currentServerIndex && currentServerIndex >= 0)
             ? servers[currentServerIndex].channels : []
@@ -208,10 +211,11 @@ Item {
 
                     // Lưu lại giá trị từ model (Popup nằm ở overlay nên không
                     // truy cập được "model" trực tiếp bên trong).
-                    property int    mId:      model.messageId
-                    property int    mAuthor:  model.authorId
-                    property string mUser:    model.username
-                    property string mContent: model.content
+                    property int    mId:          model.messageId
+                    property int    mAuthor:      model.authorId
+                    property string mUser:        model.username
+                    property string mContent:     model.content
+                    property var    mAttachments: model.attachments
 
                     HoverHandler { id: msgHover }
 
@@ -250,6 +254,62 @@ Item {
                                     + (model.edited
                                        ? " <span style='color:#b5bac1; font-size:11px;'>" + qsTr("(edited)") + "</span>"
                                        : "")
+                        }
+
+                        // Đính kèm (ảnh/gif hiển thị inline, file khác là thẻ)
+                        Column {
+                            leftPadding: 8
+                            spacing: 4
+                            visible: !model.deleted && model.attachments && model.attachments.length > 0
+                            Repeater {
+                                model: msgItem.mAttachments
+                                Loader {
+                                    sourceComponent: (modelData.kind === "image" || modelData.kind === "gif")
+                                                     ? imageAtt : fileAtt
+                                    property var att: modelData
+
+                                    Component {
+                                        id: imageAtt
+                                        Image {
+                                            source: att.url
+                                            asynchronous: true
+                                            fillMode: Image.PreserveAspectFit
+                                            sourceSize.width: 320
+                                            width: Math.min(implicitWidth, 320)
+                                            MouseArea {
+                                                anchors.fill: parent
+                                                cursorShape: Qt.PointingHandCursor
+                                                onClicked: Qt.openUrlExternally(att.url)
+                                            }
+                                        }
+                                    }
+                                    Component {
+                                        id: fileAtt
+                                        Rectangle {
+                                            width: 240; height: 40; radius: 6
+                                            color: Theme.inputBg
+                                            Row {
+                                                anchors.fill: parent
+                                                anchors.leftMargin: 10
+                                                spacing: 8
+                                                Label { text: "📎"; anchors.verticalCenter: parent.verticalCenter }
+                                                Label {
+                                                    text: att.filename
+                                                    color: Theme.textPrimary
+                                                    elide: Text.ElideRight
+                                                    width: 180
+                                                    anchors.verticalCenter: parent.verticalCenter
+                                                }
+                                            }
+                                            MouseArea {
+                                                anchors.fill: parent
+                                                cursorShape: Qt.PointingHandCursor
+                                                onClicked: Qt.openUrlExternally(att.url)
+                                            }
+                                        }
+                                    }
+                                }
+                            }
                         }
 
                         // Chip reaction
@@ -571,11 +631,60 @@ Item {
                 }
             }
 
+            // Khay đính kèm đang chờ gửi
+            Flow {
+                Layout.fillWidth: true
+                spacing: 6
+                visible: root.pendingAttachments.length > 0
+                Repeater {
+                    model: root.pendingAttachments
+                    Rectangle {
+                        width: 120; height: 80; radius: 6
+                        color: Theme.inputBg
+                        clip: true
+                        Image {
+                            anchors.fill: parent
+                            anchors.margins: 2
+                            source: (modelData.kind === "image" || modelData.kind === "gif") ? modelData.url : ""
+                            fillMode: Image.PreserveAspectCrop
+                            asynchronous: true
+                        }
+                        Label {
+                            anchors.centerIn: parent
+                            visible: modelData.kind !== "image" && modelData.kind !== "gif"
+                            text: "📎\n" + modelData.filename
+                            horizontalAlignment: Text.AlignHCenter
+                            color: Theme.textPrimary
+                            font.pixelSize: 11
+                            width: parent.width - 8
+                            elide: Text.ElideRight
+                        }
+                        // Nút xóa khỏi khay
+                        Rectangle {
+                            anchors.top: parent.top; anchors.right: parent.right
+                            anchors.margins: 2
+                            width: 18; height: 18; radius: 9
+                            color: "#000000AA"
+                            Label { anchors.centerIn: parent; text: "✕"; color: "white"; font.pixelSize: 11 }
+                            MouseArea {
+                                anchors.fill: parent
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: {
+                                    var copy = root.pendingAttachments.slice()
+                                    copy.splice(index, 1)
+                                    root.pendingAttachments = copy
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
             RowLayout {
                 Layout.fillWidth: true
                 spacing: 8
 
-                // Hộp nhập bo tròn, emoji nằm bên trong (kiểu Discord).
+                // Hộp nhập bo tròn, "+" và emoji nằm bên trong (kiểu Discord).
                 Rectangle {
                     Layout.fillWidth: true
                     Layout.preferredHeight: 44
@@ -584,9 +693,35 @@ Item {
 
                     RowLayout {
                         anchors.fill: parent
-                        anchors.leftMargin: 14
+                        anchors.leftMargin: 6
                         anchors.rightMargin: 8
-                        spacing: 4
+                        spacing: 6
+
+                        // Nút "+" nằm bên trái trong thanh chat (chỉ là icon)
+                        Item {
+                            Layout.preferredWidth: 30
+                            Layout.preferredHeight: 30
+                            Layout.alignment: Qt.AlignVCenter
+                            opacity: root.currentChannelId !== 0 ? 1.0 : 0.4
+                            Label {
+                                anchors.centerIn: parent
+                                text: "+"
+                                color: plusArea.containsMouse ? Theme.textPrimary : Theme.textMuted
+                                font.pixelSize: 24
+                                font.bold: true
+                            }
+                            MouseArea {
+                                id: plusArea
+                                anchors.fill: parent
+                                hoverEnabled: true
+                                cursorShape: Qt.PointingHandCursor
+                                enabled: root.currentChannelId !== 0
+                                onClicked: {
+                                    var p = chatClient.chooseFile()
+                                    if (p && p.length > 0) chatClient.uploadAttachment(p)
+                                }
+                            }
+                        }
 
                         TextField {
                             id: input
@@ -661,12 +796,6 @@ Item {
                     }
                 }
 
-                Button {
-                    text: qsTr("Send")
-                    highlighted: true
-                    enabled: root.currentChannelId !== 0
-                    onClicked: root.doSend()
-                }
             }
         }
     }
@@ -690,16 +819,32 @@ Item {
 
     function doSend() {
         var t = input.text.trim()
-        if (t.length === 0) return
         if (root.editingId !== 0) {
+            if (t.length === 0) return     // sửa thì phải có nội dung
             chatClient.editMessage(root.editingId, t)
             root.editingId = 0
-        } else {
-            chatClient.sendMessage(t, root.replyingToId)
-            root.replyingToId = 0
-            root.replyingToName = ""
+            input.text = ""
+            return
         }
+        if (t.length === 0 && root.pendingAttachments.length === 0) return
+        chatClient.sendMessage(t, root.replyingToId, root.pendingAttachments)
+        root.replyingToId = 0
+        root.replyingToName = ""
+        root.pendingAttachments = []
         input.text = ""
+    }
+
+    // Sự kiện upload từ ChatClient
+    Connections {
+        target: chatClient
+        function onAttachmentUploaded(url, kind, filename, size) {
+            root.pendingAttachments = root.pendingAttachments.concat([
+                { "url": url, "kind": kind, "filename": filename, "size": size }
+            ])
+        }
+        function onUploadFailed(reason) {
+            console.log("Upload failed: " + reason)
+        }
     }
 
     // ── Dialog: thêm / tham gia server ─────────────────────────

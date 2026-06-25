@@ -193,7 +193,13 @@ private:
         uint32_t channel_id  = data.value("channel_id", 0u);
         std::string content  = data.value("content", std::string());
         uint32_t reply_to_id = data.value("reply_to_id", 0u);
-        if (content.empty()) return;
+
+        // Mảng đính kèm (có thể rỗng).
+        nlohmann::json atts = data.contains("attachments") && data["attachments"].is_array()
+            ? data["attachments"] : nlohmann::json::array();
+
+        // Cho phép tin chỉ có ảnh (content rỗng nhưng có đính kèm).
+        if (content.empty() && atts.empty()) return;
 
         uint32_t server_id = db_.channel_server_id(channel_id);
         if (server_id == 0 || !db_.is_member(user_id_, server_id)) {
@@ -220,6 +226,20 @@ private:
         rec.reply_to_id = reply_to_id;
         if (reply_to_id != 0) {
             db_.reply_preview(reply_to_id, rec.reply_username, rec.reply_excerpt);
+        }
+
+        // Lưu các đính kèm (tối đa 10) rồi gắn vào record để broadcast.
+        int n = 0;
+        for (const auto& a : atts) {
+            if (++n > 10) break;
+            db::AttachmentRecord ar;
+            ar.url      = a.value("url", std::string());
+            ar.kind     = a.value("kind", std::string("file"));
+            ar.filename = a.value("filename", std::string());
+            ar.size     = a.value("size", 0u);
+            if (ar.url.empty()) continue;
+            db_.add_attachment(id, ar.url, ar.kind, ar.filename, ar.size);
+            rec.attachments.push_back(ar);
         }
 
         utils::Logger::instance().info(
@@ -356,6 +376,17 @@ private:
         return arr;
     }
 
+    static nlohmann::json attachments_to_json(const std::vector<db::AttachmentRecord>& as) {
+        nlohmann::json arr = nlohmann::json::array();
+        for (const auto& a : as) {
+            arr.push_back({
+                {"url", a.url}, {"kind", a.kind},
+                {"filename", a.filename}, {"size", a.size}
+            });
+        }
+        return arr;
+    }
+
     nlohmann::json message_to_json(const db::MessageRecord& m) {
         return {
             {"id",             m.id},
@@ -369,7 +400,8 @@ private:
             {"reply_excerpt",  m.reply_excerpt},
             {"edited_at",      m.edited_at},
             {"deleted",        m.deleted},
-            {"reactions",      reactions_to_json(m.reactions)}
+            {"reactions",      reactions_to_json(m.reactions)},
+            {"attachments",    attachments_to_json(m.attachments)}
         };
     }
 

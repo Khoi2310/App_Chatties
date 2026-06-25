@@ -10,19 +10,29 @@
 #include <fstream>
 #include <chrono>
 #include <random>
+#include <algorithm>
+#include <cctype>
 
 namespace fs = std::filesystem;
+using chatties::utils::Logger;
 
-HttpMediaServer::HttpMediaServer(const std::string& host, int port, const std::string& storage_path, chatties::server::db::Database& db)
-    : m_host(host), m_port(port), m_storage_path(storage_path), m_running(false), m_db(db) {
-    
+HttpMediaServer::HttpMediaServer(const std::string& host, int port,
+                                 const std::string& storage_path,
+                                 chatties::server::db::Database& db)
+    : m_host(host)
+    , m_public_host(host == "0.0.0.0" ? "127.0.0.1" : host)
+    , m_port(port)
+    , m_storage_path(storage_path)
+    , m_running(false)
+    , m_db(db)
+{
     m_svr = std::make_unique<httplib::Server>();
 
     if (!fs::exists(m_storage_path)) {
         fs::create_directories(m_storage_path);
     }
 
-    // Chặn rủi ro: Giới hạn payload 10MB để chống bị hack tràn ổ cứng
+    // Giới hạn payload 10MB để chống tràn ổ cứng.
     m_svr->set_payload_max_length(1024 * 1024 * 10);
 
     setupRoutes();
@@ -30,140 +40,147 @@ HttpMediaServer::HttpMediaServer(const std::string& host, int port, const std::s
 
 HttpMediaServer::~HttpMediaServer() { stop(); }
 
+bool HttpMediaServer::isValidShortcode(const std::string& s) {
+    if (s.empty() || s.size() > 32) return false;
+    return std::all_of(s.begin(), s.end(), [](unsigned char c) {
+        return std::isalnum(c) || c == '_';
+    });
+}
+
+std::string HttpMediaServer::extFromContentType(const std::string& ct) {
+    if (ct == "image/png")  return ".png";
+    if (ct == "image/jpeg" || ct == "image/jpg") return ".jpg";
+    if (ct == "image/gif")  return ".gif";
+    if (ct == "image/webp") return ".webp";
+    if (ct == "video/mp4")  return ".mp4";
+    return "";   // không hỗ trợ
+}
+
+std::string HttpMediaServer::mediaUrl(const std::string& safe_name) const {
+    return "http://" + m_public_host + ":" + std::to_string(m_port) +
+           "/media/" + safe_name;
+}
+
 void HttpMediaServer::setupRoutes() {
-    // API GET: Trả file tĩnh cho Client hiển thị (Inline image trên QML)
+    // GET /media/... : phục vụ file tĩnh (httplib tự chặn path traversal).
     m_svr->set_mount_point("/media", m_storage_path.c_str());
 
-    // API GET: Lấy danh sách Emojis thực tế từ Database
-    m_svr->Get("/emojis", [this](const httplib::Request& req, httplib::Response& res) {
+    // GET /emojis : danh sách custom emoji từ DB.
+    m_svr->Get("/emojis", [this](const httplib::Request&, httplib::Response& res) {
         try {
-            // 1. Lấy dữ liệu thật từ DB thông qua m_db
-            auto emojis = m_db.get_all_custom_emojis();
-            
-            // 2. Chuyển đổi sang chuẩn JSON
-            nlohmann::json emojis_list = nlohmann::json::array();
-            for (const auto& e : emojis) {
-                emojis_list.push_back({
-                    {"shortcode", e.shortcode},
-                    {"url", e.image_url}
-                });
+            nlohmann::json arr = nlohmann::json::array();
+            for (const auto& e : m_db.get_all_custom_emojis()) {
+                arr.push_back({ {"shortcode", e.shortcode}, {"url", e.image_url} });
             }
-
-            // 3. Trả về cho Client
             res.status = 200;
-            res.set_content(emojis_list.dump(), "application/json");
-
+            res.set_content(arr.dump(), "application/json");
         } catch (const std::exception& e) {
+            Logger::instance().error(std::string("[Media] /emojis: ") + e.what());
             res.status = 500;
-            res.set_content(R"({"error": "Failed to fetch emojis from database"})", "application/json");
+            res.set_content(nlohmann::json{{"error", "db error"}}.dump(),
+                            "application/json");
         }
     });
 
-    // API POST: Xử lý Upload
+    // POST /upload : nhận body nhị phân, lưu file, trả URL.
     m_svr->Post("/upload", [this](const httplib::Request& req, httplib::Response& res) {
-        
-        // 1. Kiểm tra trực tiếp lõi dữ liệu thô
         if (req.body.empty()) {
             res.status = 400;
-            res.set_content(R"({"error": "Empty payload"})", "application/json");
+            res.set_content(nlohmann::json{{"error", "empty payload"}}.dump(),
+                            "application/json");
             return;
         }
 
-        // 2. Chống giả mạo đuôi file: Lấy đuôi file dựa trên Content-Type chuẩn
-        std::string ext = ".bin";
-        if (req.has_header("Content-Type")) {
-            std::string ct = req.get_header_value("Content-Type");
-            if (ct == "image/png") ext = ".png";
-            else if (ct == "image/jpeg" || ct == "image/jpg") ext = ".jpg";
-            else if (ct == "image/gif") ext = ".gif";
-            else if (ct == "video/mp4") ext = ".mp4";
+        const std::string ct = req.get_header_value("Content-Type");
+        std::string ext = extFromContentType(ct);
+        if (ext.empty()) {
+            res.status = 415;   // Unsupported Media Type
+            res.set_content(nlohmann::json{{"error", "unsupported content-type"}}.dump(),
+                            "application/json");
+            return;
         }
 
-        // 3. Tận dụng lại hàm sinh tên an toàn của bạn
-        std::string safe_name = generateSafeFilename("upload" + ext);
-        std::string full_path = m_storage_path + "/" + safe_name;
+        const std::string safe_name = generateSafeFilename("upload" + ext);
+        const std::string full_path = m_storage_path + "/" + safe_name;
 
-        // 4. Ghi trực tiếp toàn bộ RAM xuống ổ cứng
         std::ofstream ofs(full_path, std::ios::binary);
-        if (ofs.is_open()) {
-            ofs.write(req.body.data(), req.body.size());
-            ofs.close();
-
-            // Sinh URL trả về cho Client
-            std::string file_url = "http://" + m_host + ":" + std::to_string(m_port) + "/media/" + safe_name;
-            std::string json_resp = R"({"url": ")" + file_url + R"("})";
-            
-            res.status = 200;
-            res.set_content(json_resp, "application/json");
-        } else {
+        ofs.write(req.body.data(), static_cast<std::streamsize>(req.body.size()));
+        if (!ofs) {
+            Logger::instance().error("[Media] write failed: " + full_path);
             res.status = 500;
-            res.set_content(R"({"error": "Disk write failed"})", "application/json");
+            res.set_content(nlohmann::json{{"error", "disk write failed"}}.dump(),
+                            "application/json");
+            return;
         }
+
+        const std::string url = mediaUrl(safe_name);
+        Logger::instance().info("[Media] upload -> " + url +
+                                " (" + std::to_string(req.body.size()) + " bytes)");
+        res.status = 200;
+        res.set_content(nlohmann::json{{"url", url}}.dump(), "application/json");
     });
 
-    // API POST: Upload Custom Emoji (Thao tác 3)
-    // Client truyền tên Emoji qua Header "X-Emoji-Shortcode", dữ liệu ảnh qua Body
+    // POST /upload_emoji : ảnh ở body, tên emoji ở header X-Emoji-Shortcode.
     m_svr->Post("/upload_emoji", [this](const httplib::Request& req, httplib::Response& res) {
-        
-        // 1. Kiểm tra Dữ liệu thô và Tên Emoji
         if (req.body.empty()) {
             res.status = 400;
-            res.set_content(R"({"error": "Empty image payload"})", "application/json");
+            res.set_content(nlohmann::json{{"error", "empty image payload"}}.dump(),
+                            "application/json");
             return;
         }
 
-        if (!req.has_header("X-Emoji-Shortcode")) {
+        const std::string shortcode = req.get_header_value("X-Emoji-Shortcode");
+        if (!isValidShortcode(shortcode)) {
             res.status = 400;
-            res.set_content(R"({"error": "Missing 'X-Emoji-Shortcode' header"})", "application/json");
+            res.set_content(nlohmann::json{{"error", "invalid shortcode (use [A-Za-z0-9_], 1-32)"}}.dump(),
+                            "application/json");
             return;
         }
 
-        std::string shortcode = req.get_header_value("X-Emoji-Shortcode");
+        const std::string ct = req.get_header_value("Content-Type");
+        std::string ext = extFromContentType(ct);
+        if (ext.empty()) ext = ".png";   // emoji mặc định PNG
 
-        // 2. Định danh đuôi file an toàn
-        std::string ext = ".png"; // Mặc định Emoji là PNG
-        if (req.has_header("Content-Type")) {
-            std::string ct = req.get_header_value("Content-Type");
-            if (ct == "image/jpeg" || ct == "image/jpg") ext = ".jpg";
-            else if (ct == "image/gif") ext = ".gif";
-        }
-
-        // 3. Ghi file ra ổ cứng
-        std::string safe_name = generateSafeFilename(shortcode + ext);
-        std::string full_path = m_storage_path + "/" + safe_name;
+        const std::string safe_name = generateSafeFilename("emoji" + ext);
+        const std::string full_path = m_storage_path + "/" + safe_name;
 
         std::ofstream ofs(full_path, std::ios::binary);
-        if (ofs.is_open()) {
-            ofs.write(req.body.data(), req.body.size());
-            ofs.close();
-
-            std::string file_url = "http://" + m_host + ":" + std::to_string(m_port) + "/media/" + safe_name;
-
-            // 4. Kết nối DB thông qua m_db một cách an toàn
-            try {
-                m_db.add_custom_emoji(shortcode, file_url);
-                
-                std::string json_resp = R"({"status": "success", "shortcode": ")" + shortcode + R"(", "url": ")" + file_url + R"("})";
-                res.status = 200;
-                res.set_content(json_resp, "application/json");
-
-            } catch (const std::exception& e) {
-                res.status = 500;
-                res.set_content(R"({"error": "Database write failed"})", "application/json");
-            }
-        } else {
+        ofs.write(req.body.data(), static_cast<std::streamsize>(req.body.size()));
+        if (!ofs) {
             res.status = 500;
-            res.set_content(R"({"error": "Disk write failed"})", "application/json");
+            res.set_content(nlohmann::json{{"error", "disk write failed"}}.dump(),
+                            "application/json");
+            return;
         }
+
+        const std::string url = mediaUrl(safe_name);
+        try {
+            m_db.add_custom_emoji(shortcode, url);
+        } catch (const std::exception& e) {
+            Logger::instance().error(std::string("[Media] emoji db: ") + e.what());
+            res.status = 500;
+            res.set_content(nlohmann::json{{"error", "db write failed"}}.dump(),
+                            "application/json");
+            return;
+        }
+
+        res.status = 200;
+        res.set_content(nlohmann::json{
+            {"status", "success"}, {"shortcode", shortcode}, {"url", url}
+        }.dump(), "application/json");
     });
 }
 
 void HttpMediaServer::start() {
     if (m_running) return;
     m_running = true;
-    // Chạy trên luồng độc lập để không chặn Asio
     m_server_thread = std::thread([this]() {
-        m_svr->listen(m_host.c_str(), m_port);
+        Logger::instance().info("[Media] HTTP server lắng nghe cổng " +
+                                std::to_string(m_port));
+        if (!m_svr->listen(m_host.c_str(), m_port)) {
+            Logger::instance().error("[Media] không thể mở cổng " +
+                                     std::to_string(m_port));
+        }
     });
 }
 
@@ -178,16 +195,15 @@ void HttpMediaServer::stop() {
 }
 
 std::string HttpMediaServer::generateSafeFilename(const std::string& original_filename) {
-    std::string ext = "";
+    std::string ext;
     size_t dot_pos = original_filename.find_last_of('.');
-    // Lấy đuôi file gốc
     if (dot_pos != std::string::npos) ext = original_filename.substr(dot_pos);
 
     auto now = std::chrono::system_clock::now().time_since_epoch().count();
     std::random_device rd;
     std::mt19937 gen(rd());
     std::uniform_int_distribution<> dis(1000, 9999);
-    
-    // Format: timestamp_random.ext (Tránh ghi đè file trùng tên)
+
+    // timestamp_random.ext — tên do server sinh, không tin tên do client gửi.
     return std::to_string(now) + "_" + std::to_string(dis(gen)) + ext;
 }
