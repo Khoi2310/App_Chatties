@@ -19,6 +19,9 @@ static std::string make_excerpt(const std::string& s, std::size_t max_bytes = 60
 Database::Database(const std::string& path)
     : db_(path, SQLite::OPEN_READWRITE | SQLite::OPEN_CREATE)
 {
+    // Thực thi lệnh này để bật chế độ Write-Ahead Logging
+    // Cho phép HTTP và TCP đọc/ghi database cùng một lúc mà không bị crash
+    db_.exec("PRAGMA journal_mode=WAL;");
     run_migrations();
     seed_defaults();
     utils::Logger::instance().info("[Database] Đã mở DB tại " + path);
@@ -89,6 +92,15 @@ void Database::run_migrations() {
         "  name       TEXT NOT NULL,"
         "  position   INTEGER NOT NULL DEFAULT 0,"
         "  created_at INTEGER NOT NULL"
+        ")"
+    );
+    
+    // [MỚI BỔ SUNG] - Bảng lưu trữ Custom Emojis
+    db_.exec(
+        "CREATE TABLE IF NOT EXISTS custom_emojis ("
+        "  id         INTEGER PRIMARY KEY AUTOINCREMENT,"
+        "  shortcode  TEXT UNIQUE NOT NULL,"
+        "  image_url  TEXT NOT NULL"
         ")"
     );
 }
@@ -419,6 +431,34 @@ uint32_t Database::channel_server_id(uint32_t channel_id) {
         return q.getColumn(0).getUInt();
     }
     return 0;
+}
+
+void Database::add_custom_emoji(const std::string& shortcode, const std::string& image_url) {
+    // Dùng INSERT OR REPLACE để tự động cập nhật ảnh nếu shortcode đã tồn tại
+    // Chống SQL Injection bằng cơ chế bind tham số của SQLiteCpp
+    SQLite::Statement q(db_,
+        "INSERT OR REPLACE INTO custom_emojis (shortcode, image_url) VALUES (?, ?)");
+    q.bind(1, shortcode);
+    q.bind(2, image_url);
+    q.exec();
+    
+    utils::Logger::instance().info(
+        "[Database] Đã lưu/cập nhật Emoji: " + shortcode + " -> " + image_url);
+}
+
+// [MỚI BỔ SUNG] - Hàm kết nối SQLite lấy danh sách
+std::vector<CustomEmojiRecord> Database::get_all_custom_emojis() {
+    std::vector<CustomEmojiRecord> out;
+    // Sắp xếp theo ABC để Client hiển thị đẹp mắt hơn
+    SQLite::Statement q(db_, "SELECT shortcode, image_url FROM custom_emojis ORDER BY shortcode ASC");
+    
+    while (q.executeStep()) {
+        CustomEmojiRecord r;
+        r.shortcode = q.getColumn(0).getString();
+        r.image_url = q.getColumn(1).getString();
+        out.push_back(std::move(r));
+    }
+    return out;
 }
 
 } // namespace db

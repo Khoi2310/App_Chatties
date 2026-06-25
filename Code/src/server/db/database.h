@@ -51,6 +51,11 @@ struct ChannelRecord {
     std::string name;
 };
 
+struct CustomEmojiRecord {
+    std::string shortcode;
+    std::string image_url;
+};
+
 class Database {
 public:
     // Mở (hoặc tạo) file DB rồi chạy migration.
@@ -117,6 +122,12 @@ public:
 
     // Server mặc định (tạo sẵn lúc khởi động).
     uint32_t default_server_id() const { return default_server_id_; }
+
+    // ─── Custom Emoji ──────────────────────────────────────────────
+    void add_custom_emoji(const std::string& shortcode, const std::string& image_url);
+
+    // [MỚI BỔ SUNG] - Hàm quét toàn bộ Emoji
+    std::vector<CustomEmojiRecord> get_all_custom_emojis();
 
 private:
     void run_migrations();
