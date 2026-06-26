@@ -94,7 +94,7 @@ void ChatClient::sendMessage(const QString& content, int replyToId,
 QString ChatClient::chooseFile() {
     return QFileDialog::getOpenFileName(
         nullptr, tr("Choose a file"), QString(),
-        tr("Images (*.png *.jpg *.jpeg *.gif *.webp);;Video (*.mp4);;All files (*)"));
+        tr("All files (*);;Images (*.png *.jpg *.jpeg *.gif *.webp)"));
 }
 
 void ChatClient::uploadAttachment(const QString& localPathOrUrl) {
@@ -102,6 +102,12 @@ void ChatClient::uploadAttachment(const QString& localPathOrUrl) {
     QString path = localPathOrUrl;
     if (path.startsWith("file:"))
         path = QUrl(path).toLocalFile();
+
+    const qint64 MAX_UPLOAD = 5LL * 1024 * 1024;   // 5 MB
+    if (QFileInfo(path).size() > MAX_UPLOAD) {
+        emit uploadFailed(tr("File too large (max 5 MB)"));
+        return;
+    }
 
     QFile file(path);
     if (!file.open(QIODevice::ReadOnly)) {
@@ -117,10 +123,10 @@ void ChatClient::uploadAttachment(const QString& localPathOrUrl) {
     else if (suffix == "jpg" || suffix == "jpeg") { contentType = "image/jpeg"; kind = "image"; }
     else if (suffix == "gif")               { contentType = "image/gif";  kind = "gif"; }
     else if (suffix == "webp")              { contentType = "image/webp"; kind = "image"; }
-    else if (suffix == "mp4")               { contentType = "video/mp4";  kind = "file"; }
     else {
-        emit uploadFailed(tr("Unsupported file type: ") + suffix);
-        return;
+        // Mọi loại file khác: tải lên như file đính kèm thông thường.
+        contentType = "application/octet-stream";
+        kind = "file";
     }
 
     const QString filename = QFileInfo(path).fileName();
@@ -128,6 +134,7 @@ void ChatClient::uploadAttachment(const QString& localPathOrUrl) {
 
     QNetworkRequest req(QUrl("http://127.0.0.1:8081/upload"));
     req.setHeader(QNetworkRequest::ContentTypeHeader, contentType);
+    req.setRawHeader("X-Filename", filename.toUtf8());
 
     QNetworkReply* reply = netManager_->post(req, bytes);
     connect(reply, &QNetworkReply::finished, this, [this, reply, kind, filename, fileSize]() {

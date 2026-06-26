@@ -32,8 +32,8 @@ HttpMediaServer::HttpMediaServer(const std::string& host, int port,
         fs::create_directories(m_storage_path);
     }
 
-    // Giới hạn payload 10MB để chống tràn ổ cứng.
-    m_svr->set_payload_max_length(1024 * 1024 * 10);
+    // Giới hạn payload 5MB để chống tràn ổ cứng.
+    m_svr->set_payload_max_length(1024 * 1024 * 5);
 
     setupRoutes();
 }
@@ -53,7 +53,19 @@ std::string HttpMediaServer::extFromContentType(const std::string& ct) {
     if (ct == "image/gif")  return ".gif";
     if (ct == "image/webp") return ".webp";
     if (ct == "video/mp4")  return ".mp4";
-    return "";   // không hỗ trợ
+    return "";   // không nhận ra từ content-type
+}
+
+// Lấy đuôi file an toàn từ tên gốc (chỉ '.', chữ và số, tối đa 10 ký tự).
+static std::string safeExtFromFilename(const std::string& name) {
+    auto dot = name.find_last_of('.');
+    if (dot == std::string::npos) return "";
+    std::string ext = name.substr(dot);
+    if (ext.size() > 10) return "";
+    for (char c : ext) {
+        if (c != '.' && !std::isalnum(static_cast<unsigned char>(c))) return "";
+    }
+    return ext;
 }
 
 std::string HttpMediaServer::mediaUrl(const std::string& safe_name) const {
@@ -94,10 +106,9 @@ void HttpMediaServer::setupRoutes() {
         const std::string ct = req.get_header_value("Content-Type");
         std::string ext = extFromContentType(ct);
         if (ext.empty()) {
-            res.status = 415;   // Unsupported Media Type
-            res.set_content(nlohmann::json{{"error", "unsupported content-type"}}.dump(),
-                            "application/json");
-            return;
+            // Không nhận ra từ content-type → lấy đuôi từ tên file gốc.
+            ext = safeExtFromFilename(req.get_header_value("X-Filename"));
+            if (ext.empty()) ext = ".bin";
         }
 
         const std::string safe_name = generateSafeFilename("upload" + ext);
