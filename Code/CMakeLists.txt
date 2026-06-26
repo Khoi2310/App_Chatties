@@ -1,7 +1,9 @@
 cmake_minimum_required(VERSION 3.15)
 
-# Use the system vcpkg toolchain (via VCPKG_ROOT) if a toolchain isn't already
-# provided on the command line (e.g. by VS Code CMake Tools / a preset).
+# Use a separately installed/system vcpkg toolchain if VCPKG_ROOT is set.
+# This repository no longer depends on a local vcpkg submodule.
+# If CMAKE_TOOLCHAIN_FILE is already provided on the command line, this
+# block does not overwrite it.
 if(DEFINED ENV{VCPKG_ROOT} AND NOT DEFINED CMAKE_TOOLCHAIN_FILE)
     set(CMAKE_TOOLCHAIN_FILE "$ENV{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake" CACHE STRING "")
 endif()

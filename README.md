@@ -55,8 +55,8 @@ Chatties brings people together in a dynamic, secure, and scalable environment. 
 
 > This is the **target** layout. Today the buildable code lives under `Code/`
 > (`Code/CMakeLists.txt`, `Code/vcpkg.json`, `Code/src/`, and the Qt client in
-> `Code/Chatties/`), with vcpkg as a submodule at `./vcpkg`. The media, database,
-> config, and docs folders below are planned.
+> `Code/Chatties/`), with vcpkg used in manifest mode via a system-installed
+> toolchain. The media, database, config, and docs folders below are planned.
 
 ```
 App_Chatties/
@@ -162,7 +162,8 @@ graph TD
 > The features above are the project's roadmap. What currently builds is the
 > **Boost.Asio TCP server** (`Code/`) and the **Qt 6 GUI client** (`Code/Chatties/`).
 > C++ dependencies are handled by vcpkg in manifest mode (`Code/vcpkg.json`), pinned
-> to a `builtin-baseline`, with vcpkg included as a git submodule at `./vcpkg`.
+> to a `builtin-baseline`. The build uses a separately installed vcpkg toolchain
+> referenced through `VCPKG_ROOT` or `CMAKE_TOOLCHAIN_FILE`.
 
 ### Prerequisites
 - **Git**
@@ -173,21 +174,20 @@ graph TD
 > The server links the Winsock libraries (`ws2_32` / `mswsock`) and is Windows-oriented.
 > No extension or IDE is required — these are plain command-line steps.
 
-### 1. Clone with the vcpkg submodule
+### 1. Clone the repo
 ```sh
-git clone --recursive https://github.com/Khoi2310/App_Chatties.git
+git clone https://github.com/Khoi2310/App_Chatties.git
 cd App_Chatties
 ```
-Already cloned without `--recursive`? Run:
-```sh
-git submodule update --init --recursive
-```
 
-### 2. Bootstrap vcpkg (once)
+### 2. Install vcpkg (once)
+If you don't already have vcpkg installed, install it separately and bootstrap it:
 ```powershell
-.\vcpkg\bootstrap-vcpkg.bat        # Windows
+git clone https://github.com/Microsoft/vcpkg.git C:\tools\vcpkg
+cd C:\tools\vcpkg
+.\bootstrap-vcpkg.bat
 ```
-You do **not** need to set `VCPKG_ROOT` — the build points at this submodule.
+Then set `VCPKG_ROOT` to your vcpkg root folder, or pass `-DCMAKE_TOOLCHAIN_FILE="C:/tools/vcpkg/scripts/buildsystems/vcpkg.cmake"` to CMake.
 
 ### 3. Build the server (`ServerApp`)
 ```powershell
@@ -226,7 +226,7 @@ For detailed development setup and guidelines, see [DEVELOPMENT.md](docs/DEVELOP
 The project builds with plain CMake — no IDE extension needed:
 ```powershell
 cd Code
-cmake --preset default      # configure (uses the vcpkg submodule toolchain)
+cmake --preset default      # configure (uses the system vcpkg toolchain via VCPKG_ROOT)
 cmake --build build         # compile
 ```
 If you use the VS Code **CMake Tools** extension, set its source directory to
