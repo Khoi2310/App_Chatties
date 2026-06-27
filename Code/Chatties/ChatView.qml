@@ -2,6 +2,7 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 import Chatties
+// import Qt5Compat.GraphicalEffects
 
 Item {
     id: root
@@ -151,6 +152,7 @@ Item {
                 anchors.horizontalCenter: parent.horizontalCenter
                 spacing: 8
 
+                /* =========================== GHI ĐÈ MÀU TÍM LÊN AVATAR SERVER ===============
                 Repeater {
                     model: root.servers
                     delegate: Rectangle {
@@ -186,6 +188,83 @@ Item {
                         }
                     }
                 }
+                ================================================================= */
+
+                Repeater {
+                    model: root.servers
+                    delegate: Item {
+                        Layout.preferredWidth: 56
+                        Layout.preferredHeight: 56
+                        Layout.alignment: Qt.AlignHCenter
+                        width: 56
+                        height: 56
+
+                        // Glow khi được chọn
+                        Rectangle {
+                            anchors.centerIn: parent
+                            width: 56
+                            height: 56
+                            radius: 28
+                            visible: index === root.currentServerIndex
+                            color: "transparent"
+                            border.color: "#FFB347"
+                            border.width: 2
+                            opacity: 0.9
+                        }
+                        Rectangle {
+                            anchors.centerIn: parent
+                            width: 60
+                            height: 60
+                            radius: 30
+                            visible: index === root.currentServerIndex
+                            color: "transparent"
+                            border.color: "#FFB347"
+                            border.width: 1.5
+                            opacity: 0.5
+                        }
+                        Rectangle {
+                            anchors.centerIn: parent
+                            width: 64
+                            height: 64
+                            radius: 32
+                            visible: index === root.currentServerIndex
+                            color: "transparent"
+                            border.color: "#FFB347"
+                            border.width: 1
+                            opacity: 0.2
+                        }
+
+                        // Icon server
+                        Rectangle {
+                            anchors.centerIn: parent
+                            width: 48
+                            height: 48
+                            radius: 24
+                            color: root.avatarColorForName(modelData.name)
+                            Label {
+                                anchors.centerIn: parent
+                                visible: !(modelData.name && modelData.name.length > 0)
+                                text: "?"
+                                color: Theme.textPrimary
+                                font.bold: true
+                                font.pixelSize: 18
+                            }
+                            Label {
+                                anchors.centerIn: parent
+                                visible: modelData.name && modelData.name.length > 0
+                                text: root.avatarInitial(modelData.name)
+                                color: Theme.textPrimary
+                                font.bold: true
+                                font.pixelSize: 18
+                            }
+                            MouseArea {
+                                anchors.fill: parent
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: root.selectServer(index)
+                            }
+                        }
+                    }
+                }
 
                 // Nút thêm server — ngay dưới server cuối cùng
                 Rectangle {
@@ -207,6 +286,7 @@ Item {
 
                 Item { Layout.fillHeight: true }
 
+                /* ======================= Lỗi avatar userprofile ko ép đc qua kiểu hình tròn =========================================
                 Rectangle {
                     Layout.preferredWidth: 48
                     Layout.preferredHeight: 48
@@ -233,6 +313,43 @@ Item {
                         font.bold: true
                         font.pixelSize: 18
                     }
+                    MouseArea {
+                        anchors.fill: parent
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: root.openSettings()
+                    }
+                } 
+                ==================================================================== */
+
+                Rectangle {
+                    Layout.preferredWidth: 48
+                    Layout.preferredHeight: 48
+                    Layout.alignment: Qt.AlignHCenter
+                    Layout.fillWidth: false
+                    width: 48
+                    height: 48
+                    radius: 24
+                    color: root.avatarColorForName(root.currentUserDisplayName)
+                    layer.enabled: true
+
+                    Label {
+                        anchors.centerIn: parent
+                        visible: !(root.currentUserAvatar && root.currentUserAvatar.length > 0)
+                        text: root.avatarInitial(root.currentUserDisplayName || root.userId)
+                        color: Theme.textPrimary
+                        font.bold: true
+                        font.pixelSize: 18
+                    }
+
+                    Image {
+                        anchors.fill: parent
+                        visible: root.currentUserAvatar && root.currentUserAvatar.length > 0
+                        source: root.avatarImageSource(root.currentUserAvatar)
+                        fillMode: Image.PreserveAspectCrop
+                        asynchronous: true
+                        cache: true
+                    }
+
                     MouseArea {
                         anchors.fill: parent
                         cursorShape: Qt.PointingHandCursor
@@ -1124,7 +1241,7 @@ Item {
         onAccepted: root.saveProfile()
         contentItem: Item {
             implicitWidth: 360
-            implicitHeight: 240
+            implicitHeight: 340
             ColumnLayout {
                 anchors.fill: parent
                 anchors.margins: 12
@@ -1171,6 +1288,8 @@ Item {
                     placeholderText: qsTr("Display name")
                     onTextChanged: root.settingsDisplayName = text
                 }
+
+                /* =====================Lỗi không lướt xuống đc trong userprofile=================================== 
                 TextArea {
                     id: profileBio
                     Layout.fillWidth: true
@@ -1179,6 +1298,20 @@ Item {
                     text: root.settingsBio
                     placeholderText: qsTr("Bio")
                     onTextChanged: root.settingsBio = text
+                }
+                ========================================================== */
+
+                ScrollView {
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: 90
+                    TextArea {
+                        id: profileBio
+                        width: parent.width
+                        wrapMode: TextEdit.Wrap
+                        text: root.settingsBio
+                        placeholderText: qsTr("Bio")
+                        onTextChanged: root.settingsBio = text
+                    }
                 }
             }
         }
