@@ -183,11 +183,14 @@ cd App_Chatties
 ### 2. Install vcpkg (once)
 If you don't already have vcpkg installed, install it separately and bootstrap it:
 ```powershell
-git clone https://github.com/Microsoft/vcpkg.git C:\tools\vcpkg
-cd C:\tools\vcpkg
+git clone https://github.com/Microsoft/vcpkg.git 
+cd E:\LTM\Project\App_Chatties\vcpkg
 .\bootstrap-vcpkg.bat
+cd ..\Code
+mkdir build
+cd build
+cmake .. -DCMAKE_TOOLCHAIN_FILE="E:/LTM/Project/App_Chatties/vcpkg/scripts/buildsystems/vcpkg.cmake"
 ```
-Then set `VCPKG_ROOT` to your vcpkg root folder, or pass `-DCMAKE_TOOLCHAIN_FILE="C:/tools/vcpkg/scripts/buildsystems/vcpkg.cmake"` to CMake.
 
 ### 3. Build the server (`ServerApp`)
 ```powershell
@@ -202,7 +205,7 @@ takes a few minutes (Boost compiles from source). The binary lands in `Code/buil
 The client uses Qt, not vcpkg — point CMake at your Qt kit:
 ```powershell
 cd Code/Chatties
-cmake -B build -S . -DCMAKE_PREFIX_PATH="C:/Qt/6.x.x/msvc2022_64"
+cmake -B build -S . -DCMAKE_PREFIX_PATH="D:\Qt\6.11.1\msvc2022_64"
 cmake --build build
 ```
 

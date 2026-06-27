@@ -3,7 +3,7 @@
   "configurePresets": [
     {
       "name": "default",
-      "generator": "Visual Studio 17 2022",
+      "generator": "Visual Studio 18 2026",
       "description": "Configure with vcpkg toolchain if VCPKG_ROOT is set.",
       "cacheVariables": {
         "CMAKE_TOOLCHAIN_FILE": "$env{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake"
