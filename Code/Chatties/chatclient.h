@@ -32,7 +32,6 @@ public:
     Q_INVOKABLE void updateProfileAvatar(const QString& avatarUrl);
     Q_INVOKABLE void updateProfile(const QString& displayName, const QString& bio);
     Q_INVOKABLE void requestUserProfile(int userId);
-    Q_INVOKABLE void requestUserProfile(int userId);
     Q_INVOKABLE void editMessage(int messageId, const QString& content);
     Q_INVOKABLE void deleteMessage(int messageId);
     Q_INVOKABLE void toggleReaction(int messageId, const QString& emoji);

@@ -170,7 +170,7 @@ private:
                 });
             }
             servers.push_back({
-                {"id", s.id}, {"name", s.name}, {"avatar_url", s.avatar_url}, {"channels", channels}
+                {"id", s.id}, {"name", s.name}, {"channels", channels}
             });
         }
         send_op("ready", {
@@ -418,23 +418,6 @@ private:
             return;
         }
         db_.create_channel(server_id, name);
-        auto members = db_.member_ids(server_id);
-        for (auto& conn : connections_) conn->refresh_ready_if_user_in(members);
-    }
-
-    void handle_server_update(const nlohmann::json& data) {
-        uint32_t server_id = data.value("server_id", 0u);
-        std::string avatar = data.value("avatar_url", std::string());
-        if (server_id == 0) { send_error("Invalid server_id."); return; }
-        uint32_t owner = db_.server_owner(server_id);
-        if (owner != user_id_) {
-            send_error("Only server owner can update the server.");
-            return;
-        }
-        if (!db_.update_server_avatar(server_id, avatar)) {
-            send_error("Unable to update server avatar.");
-            return;
-        }
         auto members = db_.member_ids(server_id);
         for (auto& conn : connections_) conn->refresh_ready_if_user_in(members);
     }

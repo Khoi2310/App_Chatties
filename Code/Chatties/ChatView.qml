@@ -114,8 +114,12 @@ Item {
     // Reset trạng thái khi đăng xuất (visible = false).
     onVisibleChanged: {
         if (!visible) {
-        function onAuthOk(userId, username, displayName, avatarUrl, bio) {
             currentServerIndex = 0
+            currentChannelId = 0
+            replyingToId = 0
+            replyingToName = ""
+            editingId = 0
+            pendingAttachments = []
         }
     }
 
@@ -140,13 +144,26 @@ Item {
             Layout.preferredWidth: 68
             color: Theme.serverBar
 
-            if (root.avatarUploadPending) {
-                root.avatarUploadPending = false
-                root.settingsAvatarUrl = url
-                root.currentUserAvatar = url
-                chatClient.updateProfileAvatar(url)
-                return
-            }
+            ColumnLayout {
+                anchors.fill: parent
+                anchors.topMargin: 12
+                anchors.bottomMargin: 12
+                anchors.horizontalCenter: parent.horizontalCenter
+                spacing: 8
+
+                Repeater {
+                    model: root.servers
+                    delegate: Rectangle {
+                        Layout.preferredWidth: 48
+                        Layout.preferredHeight: 48
+                        Layout.alignment: Qt.AlignHCenter
+                        width: 48
+                        height: 48
+                        radius: 24
+                        color: index === root.currentServerIndex
+                               ? Theme.accent
+                               : root.avatarColorForName(modelData.name)
+                        Label {
                             anchors.centerIn: parent
                             visible: !(modelData.name && modelData.name.length > 0)
                             text: "?"
@@ -170,8 +187,34 @@ Item {
                     }
                 }
 
+                // Nút thêm server — ngay dưới server cuối cùng
                 Rectangle {
+                    Layout.preferredWidth: 48
+                    Layout.preferredHeight: 48
+                    Layout.alignment: Qt.AlignHCenter
                     width: 48; height: 48; radius: 24
+                    color: Theme.inputBg
+                    Label {
+                        anchors.centerIn: parent
+                        text: "+"; color: Theme.accent; font.pixelSize: 24
+                    }
+                    MouseArea {
+                        anchors.fill: parent
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: addServerDialog.open()
+                    }
+                }
+
+                Item { Layout.fillHeight: true }
+
+                Rectangle {
+                    Layout.preferredWidth: 48
+                    Layout.preferredHeight: 48
+                    Layout.alignment: Qt.AlignHCenter
+                    Layout.fillWidth: false
+                    width: 48
+                    height: 48
+                    radius: width / 2
                     color: Theme.inputBg
                     clip: true
                     Image {
@@ -194,21 +237,6 @@ Item {
                         anchors.fill: parent
                         cursorShape: Qt.PointingHandCursor
                         onClicked: root.openSettings()
-                    }
-                }
-
-                // Nút thêm server
-                Rectangle {
-                    width: 48; height: 48; radius: 24
-                    color: Theme.inputBg
-                    Label {
-                        anchors.centerIn: parent
-                        text: "+"; color: Theme.accent; font.pixelSize: 24
-                    }
-                    MouseArea {
-                        anchors.fill: parent
-                        cursorShape: Qt.PointingHandCursor
-                        onClicked: addServerDialog.open()
                     }
                 }
             }
