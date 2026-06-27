@@ -105,6 +105,8 @@ private:
                 else if (op == "server.create")  handle_server_create(data);
                 else if (op == "server.join")    handle_server_join(data);
                 else if (op == "channel.create") handle_channel_create(data);
+                else if (op == "profile.update") handle_profile_update(data);
+                else if (op == "user.profile")   handle_user_profile(data);
             }
         } catch (const std::exception& e) {
             utils::Logger::instance().warning(
@@ -140,6 +142,8 @@ private:
         user_id_      = rec.id;
         username_     = rec.username;
         display_name_ = rec.display_name;
+        avatar_url_   = rec.avatar_url;
+        bio_          = rec.bio;
 
         // Đảm bảo user luôn thuộc server mặc định (kể cả tài khoản cũ
         // được tạo trước khi có tính năng server/channel).
@@ -148,7 +152,9 @@ private:
         send_op("auth.ok", {
             {"user_id",      rec.id},
             {"username",     rec.username},
-            {"display_name", rec.display_name}
+            {"display_name", rec.display_name},
+            {"avatar_url",   rec.avatar_url},
+            {"bio",          rec.bio}
         });
         send_ready();
     }
@@ -164,10 +170,13 @@ private:
                 });
             }
             servers.push_back({
-                {"id", s.id}, {"name", s.name}, {"channels", channels}
+                {"id", s.id}, {"name", s.name}, {"avatar_url", s.avatar_url}, {"channels", channels}
             });
         }
-        send_op("ready", { {"servers", servers} });
+        send_op("ready", {
+            {"servers", servers},
+            {"avatar_url", avatar_url_}
+        });
     }
 
     // ── Chọn channel + lịch sử ───────────────────────────────────
@@ -221,6 +230,7 @@ private:
         rec.channel_id  = channel_id;
         rec.author_id   = user_id_;
         rec.author_name = display_name_;
+        rec.avatar_url  = avatar_url_;
         rec.content     = content;
         rec.created_at  = ts;
         rec.reply_to_id = reply_to_id;
@@ -329,6 +339,50 @@ private:
         });
     }
 
+    void handle_profile_update(const nlohmann::json& data) {
+        std::string display_name = data.contains("display_name")
+            ? data.value("display_name", std::string())
+            : display_name_;
+        std::string bio = data.contains("bio")
+            ? data.value("bio", std::string())
+            : bio_;
+        std::string avatar_url = data.contains("avatar_url")
+            ? data.value("avatar_url", std::string())
+            : avatar_url_;
+        if (db_.update_user_profile(user_id_, display_name, bio, avatar_url)) {
+            display_name_ = display_name;
+            bio_ = bio;
+            avatar_url_ = avatar_url;
+            send_op("profile.ok", {
+                {"display_name", display_name},
+                {"bio", bio},
+                {"avatar_url", avatar_url}
+            });
+        } else {
+            send_error("Unable to update profile.");
+        }
+    }
+
+    void handle_user_profile(const nlohmann::json& data) {
+        uint32_t target_user_id = data.value("user_id", 0u);
+        if (target_user_id == 0) {
+            send_error("Invalid user_id.");
+            return;
+        }
+        auto profile = db_.get_user_profile(target_user_id);
+        if (!profile) {
+            send_error("User not found.");
+            return;
+        }
+        send_op("user.profile", {
+            {"user_id", profile->id},
+            {"username", profile->username},
+            {"display_name", profile->display_name},
+            {"avatar_url", profile->avatar_url},
+            {"bio", profile->bio}
+        });
+    }
+
     // ── Tạo / tham gia server, tạo channel ───────────────────────
     void handle_server_create(const nlohmann::json& data) {
         std::string name = data.value("name", std::string());
@@ -368,6 +422,23 @@ private:
         for (auto& conn : connections_) conn->refresh_ready_if_user_in(members);
     }
 
+    void handle_server_update(const nlohmann::json& data) {
+        uint32_t server_id = data.value("server_id", 0u);
+        std::string avatar = data.value("avatar_url", std::string());
+        if (server_id == 0) { send_error("Invalid server_id."); return; }
+        uint32_t owner = db_.server_owner(server_id);
+        if (owner != user_id_) {
+            send_error("Only server owner can update the server.");
+            return;
+        }
+        if (!db_.update_server_avatar(server_id, avatar)) {
+            send_error("Unable to update server avatar.");
+            return;
+        }
+        auto members = db_.member_ids(server_id);
+        for (auto& conn : connections_) conn->refresh_ready_if_user_in(members);
+    }
+
     static nlohmann::json reactions_to_json(const std::vector<db::ReactionCount>& rs) {
         nlohmann::json arr = nlohmann::json::array();
         for (const auto& r : rs) {
@@ -393,6 +464,7 @@ private:
             {"channel_id",     m.channel_id},
             {"author_id",      m.author_id},
             {"username",       m.author_name},
+            {"avatar_url",     m.avatar_url},
             {"content",        m.content},
             {"timestamp",      m.created_at},
             {"reply_to_id",    m.reply_to_id},
@@ -426,6 +498,8 @@ private:
     uint32_t    current_channel_id_ = 0;
     std::string username_;
     std::string display_name_;
+    std::string avatar_url_;
+    std::string bio_;
 };
 
 // ─── AsioServer ────────────────────────────────────────────────────────────

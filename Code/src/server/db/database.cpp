@@ -6,6 +6,23 @@ namespace chatties {
 namespace server {
 namespace db {
 
+static bool table_has_column(SQLite::Database& db, const std::string& table, const std::string& column) {
+    SQLite::Statement q(db, "PRAGMA table_info(" + table + ")");
+    while (q.executeStep()) {
+        if (q.getColumn("name").getString() == column) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static void ensure_column(SQLite::Database& db, const std::string& table, const std::string& column,
+                          const std::string& definition) {
+    if (!table_has_column(db, table, column)) {
+        db.exec("ALTER TABLE " + table + " ADD COLUMN " + column + " " + definition);
+    }
+}
+
 // Cắt chuỗi an toàn theo ranh giới UTF-8 (tránh cắt giữa 1 ký tự/emoji).
 static std::string make_excerpt(const std::string& s, std::size_t max_bytes = 60) {
     if (s.size() <= max_bytes) return s;
@@ -35,9 +52,19 @@ void Database::run_migrations() {
         "  email         TEXT UNIQUE NOT NULL,"
         "  display_name  TEXT NOT NULL,"
         "  password_hash TEXT NOT NULL,"
+        "  avatar_url    TEXT,"
+        "  bio           TEXT,"
+        "  status        TEXT,"
         "  created_at    INTEGER NOT NULL"
         ")"
     );
+
+    ensure_column(db_, "users", "display_name", "TEXT NOT NULL DEFAULT ''");
+    ensure_column(db_, "users", "password_hash", "TEXT NOT NULL DEFAULT ''");
+    ensure_column(db_, "users", "avatar_url", "TEXT");
+    ensure_column(db_, "users", "bio", "TEXT");
+    ensure_column(db_, "users", "status", "TEXT");
+    ensure_column(db_, "users", "created_at", "INTEGER NOT NULL DEFAULT 0");
 
     db_.exec(
         "CREATE TABLE IF NOT EXISTS messages ("
@@ -154,6 +181,9 @@ std::optional<UserRecord> Database::create_user(const std::string& username,
         rec.username     = username;
         rec.email        = email;
         rec.display_name = display_name;
+        rec.avatar_url   = std::string();
+        rec.bio          = std::string();
+        rec.status       = std::string();
         return rec;
     } catch (const SQLite::Exception& e) {
         // Nhiều khả năng do vi phạm UNIQUE(username) hoặc UNIQUE(email)
@@ -165,7 +195,7 @@ std::optional<UserRecord> Database::create_user(const std::string& username,
 
 std::optional<UserRecord> Database::find_user(const std::string& username) {
     SQLite::Statement q(db_,
-        "SELECT id, username, email, display_name FROM users WHERE username = ?");
+        "SELECT id, username, email, display_name, avatar_url, bio, status FROM users WHERE username = ?");
     q.bind(1, username);
     if (q.executeStep()) {
         UserRecord rec;
@@ -173,9 +203,67 @@ std::optional<UserRecord> Database::find_user(const std::string& username) {
         rec.username     = q.getColumn(1).getString();
         rec.email        = q.getColumn(2).getString();
         rec.display_name = q.getColumn(3).getString();
+        rec.avatar_url   = q.getColumn(4).isNull() ? std::string() : q.getColumn(4).getString();
+        rec.bio          = q.getColumn(5).isNull() ? std::string() : q.getColumn(5).getString();
+        rec.status       = q.getColumn(6).isNull() ? std::string() : q.getColumn(6).getString();
         return rec;
     }
     return std::nullopt;
+}
+
+std::optional<UserRecord> Database::get_user_profile(uint32_t user_id) {
+    SQLite::Statement q(db_,
+        "SELECT id, username, email, display_name, avatar_url, bio, status FROM users WHERE id = ?");
+    q.bind(1, user_id);
+    if (q.executeStep()) {
+        UserRecord rec;
+        rec.id           = q.getColumn(0).getUInt();
+        rec.username     = q.getColumn(1).getString();
+        rec.email        = q.getColumn(2).getString();
+        rec.display_name = q.getColumn(3).getString();
+        rec.avatar_url   = q.getColumn(4).isNull() ? std::string() : q.getColumn(4).getString();
+        rec.bio          = q.getColumn(5).isNull() ? std::string() : q.getColumn(5).getString();
+        rec.status       = q.getColumn(6).isNull() ? std::string() : q.getColumn(6).getString();
+        return rec;
+    }
+    return std::nullopt;
+}
+
+bool Database::update_user_profile(uint32_t user_id,
+                                    const std::string& display_name,
+                                    const std::string& bio,
+                                    const std::string& avatar_url) {
+    std::lock_guard<std::mutex> lock(db_mutex_);
+    try {
+        SQLite::Statement q(db_,
+            "UPDATE users SET display_name = ?, bio = ?, avatar_url = ? WHERE id = ?");
+        q.bind(1, display_name);
+        q.bind(2, bio);
+        q.bind(3, avatar_url);
+        q.bind(4, user_id);
+        q.exec();
+        return db_.getChanges() > 0;
+    } catch (const SQLite::Exception& e) {
+        utils::Logger::instance().warning(
+            std::string("[Database] update_user_profile thất bại: ") + e.what());
+        return false;
+    }
+}
+
+bool Database::update_user_avatar(uint32_t user_id, const std::string& avatar_url) {
+    std::lock_guard<std::mutex> lock(db_mutex_);
+    try {
+        SQLite::Statement q(db_,
+            "UPDATE users SET avatar_url = ? WHERE id = ?");
+        q.bind(1, avatar_url);
+        q.bind(2, user_id);
+        q.exec();
+        return db_.getChanges() > 0;
+    } catch (const SQLite::Exception& e) {
+        utils::Logger::instance().warning(
+            std::string("[Database] update_user_avatar thất bại: ") + e.what());
+        return false;
+    }
 }
 
 bool Database::email_exists(const std::string& email) {
@@ -271,7 +359,7 @@ std::vector<MessageRecord> Database::recent_messages(uint32_t channel_id, int li
     std::vector<MessageRecord> result;
 
     SQLite::Statement q(db_,
-        "SELECT m.id, m.channel_id, m.author_id, u.username, m.content, m.created_at, "
+        "SELECT m.id, m.channel_id, m.author_id, u.username, u.avatar_url, m.content, m.created_at, "
         "       m.edited_at, m.deleted, "
         "       m.reply_to_id, ru.username, rm.content, rm.deleted "
         "FROM messages m "
@@ -290,18 +378,19 @@ std::vector<MessageRecord> Database::recent_messages(uint32_t channel_id, int li
         rec.channel_id  = q.getColumn(1).getUInt();
         rec.author_id   = q.getColumn(2).getUInt();
         rec.author_name = q.getColumn(3).getString();
-        rec.content     = q.getColumn(4).getString();
-        rec.created_at  = q.getColumn(5).getUInt();
-        rec.edited_at   = q.getColumn(6).isNull() ? 0 : q.getColumn(6).getUInt();
-        rec.deleted     = q.getColumn(7).getInt() != 0;
+        rec.avatar_url  = q.getColumn(4).isNull() ? std::string() : q.getColumn(4).getString();
+        rec.content     = q.getColumn(5).getString();
+        rec.created_at  = q.getColumn(6).getUInt();
+        rec.edited_at   = q.getColumn(7).isNull() ? 0 : q.getColumn(7).getUInt();
+        rec.deleted     = q.getColumn(8).getInt() != 0;
         if (rec.deleted) rec.content.clear();    // không trả nội dung đã xóa
-        rec.reply_to_id = q.getColumn(8).isNull() ? 0 : q.getColumn(8).getUInt();
+        rec.reply_to_id = q.getColumn(9).isNull() ? 0 : q.getColumn(9).getUInt();
         if (rec.reply_to_id != 0) {
-            rec.reply_username = q.getColumn(9).getString();
-            bool reply_deleted = q.getColumn(11).getInt() != 0;
+            rec.reply_username = q.getColumn(10).getString();
+            bool reply_deleted = q.getColumn(12).getInt() != 0;
             rec.reply_excerpt  = reply_deleted
                 ? std::string("[deleted]")
-                : make_excerpt(q.getColumn(10).getString());
+                : make_excerpt(q.getColumn(11).getString());
         }
         result.push_back(std::move(rec));
     }

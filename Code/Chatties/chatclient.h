@@ -29,6 +29,10 @@ public:
     Q_INVOKABLE QString chooseFile();
     // Tải file lên media server (HTTP); phát attachmentUploaded khi xong.
     Q_INVOKABLE void uploadAttachment(const QString& localPathOrUrl);
+    Q_INVOKABLE void updateProfileAvatar(const QString& avatarUrl);
+    Q_INVOKABLE void updateProfile(const QString& displayName, const QString& bio);
+    Q_INVOKABLE void requestUserProfile(int userId);
+    Q_INVOKABLE void requestUserProfile(int userId);
     Q_INVOKABLE void editMessage(int messageId, const QString& content);
     Q_INVOKABLE void deleteMessage(int messageId);
     Q_INVOKABLE void toggleReaction(int messageId, const QString& emoji);
@@ -42,7 +46,7 @@ public:
 signals:
     void connected();
     void disconnected();
-    void authOk(int userId, QString username, QString displayName);
+    void authOk(int userId, QString username, QString displayName, QString avatarUrl, QString bio);
     void authError(QString reason);
     void serversReceived(QJsonArray servers);
     void channelHistory(int channelId, QJsonArray messages);
@@ -51,6 +55,8 @@ signals:
     void messageDeleted(int id);
     void reactionUpdated(int messageId, QVariantList reactions);
     void attachmentUploaded(QString url, QString kind, QString filename, int size);
+    void profileUpdated(QString avatarUrl, QString displayName, QString bio);
+    void userProfileReceived(int userId, QString username, QString displayName, QString avatarUrl, QString bio);
     void uploadFailed(QString reason);
     void errorReceived(QString reason);
 

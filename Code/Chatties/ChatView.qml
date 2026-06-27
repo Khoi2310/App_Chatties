@@ -25,6 +25,19 @@ Item {
     property string replyingToName: ""
     property int    userId: 0
     property int    editingId: 0
+    property string currentUserDisplayName: ""
+    property string currentUserAvatar: ""
+    property string currentUserBio: ""
+    property int    profileTargetUserId: 0
+    property string profileTargetUsername: ""
+    property string profileTargetDisplayName: ""
+    property string profileTargetAvatar: ""
+    property string profileTargetBio: ""
+    property bool   avatarUploadPending: false
+    property string settingsDisplayName: ""
+    property string settingsBio: ""
+    property string settingsAvatarUrl: ""
+    
 
     // Đính kèm đang chờ gửi: [{url, kind, filename, size}]
     property var    pendingAttachments: []
@@ -41,6 +54,56 @@ Item {
         chatClient.selectChannel(id)
     }
 
+    function avatarColorForName(name) {
+        var base = String(name || "?").toUpperCase()
+        var sum = 0
+        for (var i = 0; i < base.length; ++i) sum += base.charCodeAt(i)
+        var palette = ["#5865f2", "#f26522", "#1f9d7a", "#f0b232", "#e84d4d", "#8e5bdc", "#2ecc71", "#3498db"]
+        return palette[sum % palette.length]
+    }
+
+    function avatarInitial(name) {
+        var value = String(name || "?").trim()
+        if (value.length === 0) return "?"
+
+        for (var i = 0; i < value.length; ++i) {
+            var ch = value.charAt(i)
+            if (ch !== " " && ch !== "\t" && ch !== "\n" && ch !== "\r") {
+                return ch.toUpperCase()
+            }
+        }
+
+        return value.charAt(0).toUpperCase()
+    }
+
+    function avatarImageSource(url) {
+        return url && String(url).trim().length > 0 ? String(url) : ""
+    }
+
+    function showUserProfile(userId, username, avatarUrl, displayName, bio) {
+        profileTargetUserId = userId
+        profileTargetUsername = username || ""
+        profileTargetDisplayName = displayName || username || ""
+        profileTargetAvatar = avatarUrl || ""
+        profileTargetBio = bio || ""
+        if (userId > 0) chatClient.requestUserProfile(userId)
+        profilePopup.open()
+        profilePopup.x = Math.max(12, (root.width - profilePopup.width) / 2)
+        profilePopup.y = Math.max(12, (root.height - profilePopup.height) / 2)
+    }
+
+    function openSettings() {
+        settingsDisplayName = currentUserDisplayName
+        settingsBio = currentUserBio
+        settingsAvatarUrl = currentUserAvatar
+        settingsDialog.open()
+    }
+
+    function saveProfile() {
+        chatClient.updateProfile(settingsDisplayName, settingsBio)
+        settingsDialog.close()
+    }
+
     function selectServer(idx) {
         currentServerIndex = idx
         currentChannelId = 0
@@ -51,7 +114,7 @@ Item {
     // Reset trạng thái khi đăng xuất (visible = false).
     onVisibleChanged: {
         if (!visible) {
-            currentChannelId = 0
+        function onAuthOk(userId, username, displayName, avatarUrl, bio) {
             currentServerIndex = 0
         }
     }
@@ -77,20 +140,24 @@ Item {
             Layout.preferredWidth: 68
             color: Theme.serverBar
 
-            Column {
-                anchors.top: parent.top
-                anchors.horizontalCenter: parent.horizontalCenter
-                topPadding: 10
-                spacing: 10
-
-                Repeater {
-                    model: root.servers
-                    Rectangle {
-                        width: 48; height: 48; radius: 24
-                        color: index === root.currentServerIndex ? Theme.accent : Theme.inputBg
+            if (root.avatarUploadPending) {
+                root.avatarUploadPending = false
+                root.settingsAvatarUrl = url
+                root.currentUserAvatar = url
+                chatClient.updateProfileAvatar(url)
+                return
+            }
+                            anchors.centerIn: parent
+                            visible: !(modelData.name && modelData.name.length > 0)
+                            text: "?"
+                            color: Theme.textPrimary
+                            font.bold: true
+                            font.pixelSize: 18
+                        }
                         Label {
                             anchors.centerIn: parent
-                            text: modelData.name.length > 0 ? modelData.name.charAt(0).toUpperCase() : "?"
+                            visible: modelData.name && modelData.name.length > 0
+                            text: root.avatarInitial(modelData.name)
                             color: Theme.textPrimary
                             font.bold: true
                             font.pixelSize: 18
@@ -100,6 +167,33 @@ Item {
                             cursorShape: Qt.PointingHandCursor
                             onClicked: root.selectServer(index)
                         }
+                    }
+                }
+
+                Rectangle {
+                    width: 48; height: 48; radius: 24
+                    color: Theme.inputBg
+                    clip: true
+                    Image {
+                        anchors.fill: parent
+                        visible: root.currentUserAvatar && root.currentUserAvatar.length > 0
+                        source: root.avatarImageSource(root.currentUserAvatar)
+                        fillMode: Image.PreserveAspectCrop
+                        asynchronous: true
+                        cache: true
+                    }
+                    Label {
+                        anchors.centerIn: parent
+                        visible: !(root.currentUserAvatar && root.currentUserAvatar.length > 0)
+                        text: root.avatarInitial(root.currentUserDisplayName || root.userId)
+                        color: Theme.textPrimary
+                        font.bold: true
+                        font.pixelSize: 18
+                    }
+                    MouseArea {
+                        anchors.fill: parent
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: root.openSettings()
                     }
                 }
 
@@ -160,7 +254,8 @@ Item {
                         color: modelData.id === root.currentChannelId ? Theme.accent : "transparent"
                         Label {
                             anchors.verticalCenter: parent.verticalCenter
-                            leftPadding: 8
+                            anchors.left: parent.left
+                            anchors.leftMargin: 8
                             text: "# " + modelData.name
                             color: Theme.textPrimary
                         }
@@ -216,131 +311,182 @@ Item {
                     property string mUser:        model.username
                     property string mContent:     model.content
                     property var    mAttachments: model.attachments
+                    property string mAvatar:      model.avatarUrl
 
                     HoverHandler { id: msgHover }
 
-                    Column {
-                        id: msgCol
+                    RowLayout {
+                        id: msgRow
                         width: parent.width
-                        spacing: 1
+                        spacing: 8
 
-                        // Trích dẫn tin được trả lời
-                        Label {
-                            visible: model.replyToId !== 0
-                            leftPadding: 8
-                            width: parent.width
-                            text: "↪ " + model.replyUsername + ": " + model.replyExcerpt
-                            color: Theme.textMuted
-                            font.pixelSize: Theme.fontSmall
-                            elide: Text.ElideRight
-                        }
-                        Label {
-                            leftPadding: 8
-                            text: (model.username && model.username.length ? model.username : "?")
-                            color: Theme.accent
-                            font.bold: true
-                            font.pixelSize: Theme.fontSmall
-                        }
-                        Label {
-                            leftPadding: 8
-                            rightPadding: 8
-                            width: parent.width
-                            textFormat: Text.RichText
-                            color: Theme.textPrimary
-                            wrapMode: Text.WordWrap
-                            text: model.deleted
-                                  ? "<i><span style='color:#b5bac1;'>" + qsTr("[message deleted]") + "</span></i>"
-                                  : root.escapeHtml(model.content)
-                                    + (model.edited
-                                       ? " <span style='color:#b5bac1; font-size:11px;'>" + qsTr("(edited)") + "</span>"
-                                       : "")
-                        }
-
-                        // Đính kèm (ảnh/gif hiển thị inline, file khác là thẻ)
-                        Column {
-                            leftPadding: 8
-                            spacing: 4
-                            visible: !model.deleted && model.attachments && model.attachments.length > 0
-                            Repeater {
-                                model: msgItem.mAttachments
-                                Loader {
-                                    sourceComponent: (modelData.kind === "image" || modelData.kind === "gif")
-                                                     ? imageAtt : fileAtt
-                                    property var att: modelData
-
-                                    Component {
-                                        id: imageAtt
-                                        Image {
-                                            source: att.url
-                                            asynchronous: true
-                                            fillMode: Image.PreserveAspectFit
-                                            sourceSize.width: 320
-                                            width: Math.min(implicitWidth, 320)
-                                            MouseArea {
-                                                anchors.fill: parent
-                                                cursorShape: Qt.PointingHandCursor
-                                                onClicked: Qt.openUrlExternally(att.url)
-                                            }
-                                        }
-                                    }
-                                    Component {
-                                        id: fileAtt
-                                        Rectangle {
-                                            width: 240; height: 40; radius: 6
-                                            color: Theme.inputBg
-                                            Row {
-                                                anchors.fill: parent
-                                                anchors.leftMargin: 10
-                                                spacing: 8
-                                                Label { text: "📎"; anchors.verticalCenter: parent.verticalCenter }
-                                                Label {
-                                                    text: att.filename
-                                                    color: Theme.textPrimary
-                                                    elide: Text.ElideRight
-                                                    width: 180
-                                                    anchors.verticalCenter: parent.verticalCenter
-                                                }
-                                            }
-                                            MouseArea {
-                                                anchors.fill: parent
-                                                cursorShape: Qt.PointingHandCursor
-                                                onClicked: Qt.openUrlExternally(att.url)
-                                            }
-                                        }
+                        Rectangle {
+                            id: avatarBubble
+                            Layout.preferredWidth: 32
+                            Layout.preferredHeight: 32
+                            radius: 16
+                            color: root.avatarColorForName(msgItem.mUser || "?")
+                            clip: true
+                            Image {
+                                anchors.fill: parent
+                                visible: msgItem.mAvatar && msgItem.mAvatar.length > 0
+                                source: root.avatarImageSource(msgItem.mAvatar)
+                                fillMode: Image.PreserveAspectCrop
+                                asynchronous: true
+                                cache: true
+                            }
+                            Label {
+                                anchors.centerIn: parent
+                                visible: !(msgItem.mAvatar && msgItem.mAvatar.length > 0)
+                                text: root.avatarInitial(msgItem.mUser)
+                                color: Theme.textPrimary
+                                font.bold: true
+                                font.pixelSize: 14
+                            }
+                            MouseArea {
+                                anchors.fill: parent
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: {
+                                    if (msgItem.mAuthor === root.userId) {
+                                        root.openSettings()
+                                    } else {
+                                        root.showUserProfile(msgItem.mAuthor, msgItem.mUser, msgItem.mAvatar, msgItem.mUser, "")
                                     }
                                 }
                             }
                         }
 
-                        // Chip reaction
-                        Flow {
-                            id: reactionFlow
-                            leftPadding: 8
-                            width: parent.width
-                            spacing: 4
-                            property var reactionsData: model.reactions
-                            property int msgId: model.messageId
-                            visible: reactionsData && reactionsData.length > 0
+                        
 
-                            Repeater {
-                                model: reactionFlow.reactionsData
-                                Rectangle {
-                                    height: 22
-                                    width: chipRow.implicitWidth + 14
-                                    radius: 11
-                                    color: Theme.inputBg
+                        Column {
+                            id: msgCol
+                            Layout.fillWidth: true
+                            spacing: 1
 
-                                    Row {
-                                        id: chipRow
-                                        anchors.centerIn: parent
-                                        spacing: 4
-                                        Label { text: modelData.emoji; font.pixelSize: 13 }
-                                        Label { text: modelData.count; color: Theme.textMuted; font.pixelSize: 12 }
+                            // Trích dẫn tin được trả lời
+                            Label {
+                                visible: model.replyToId !== 0
+                                anchors.left: parent.left
+                                anchors.leftMargin: 8
+                                width: parent.width
+                                text: "↪ " + model.replyUsername + ": " + model.replyExcerpt
+                                color: Theme.textMuted
+                                font.pixelSize: Theme.fontSmall
+                                elide: Text.ElideRight
+                            }
+                            Label {
+                                anchors.left: parent.left
+                                anchors.leftMargin: 8
+                                text: (model.username && model.username.length ? model.username : "?")
+                                color: Theme.accent
+                                font.bold: true
+                                font.pixelSize: 12
+                            }
+                            Label {
+                                anchors.left: parent.left
+                                anchors.right: parent.right
+                                anchors.leftMargin: 8
+                                anchors.rightMargin: 8
+                                width: parent.width
+                                textFormat: Text.RichText
+                                color: Theme.textPrimary
+                                wrapMode: Text.WordWrap
+                                text: model.deleted
+                                      ? "<i><span style='color:#b5bac1;'>" + qsTr("[message deleted]") + "</span></i>"
+                                      : root.escapeHtml(model.content)
+                                        + (model.edited
+                                           ? " <span style='color:#b5bac1; font-size:11px;'>" + qsTr("(edited)") + "</span>"
+                                           : "")
+                            }
+
+                            // Đính kèm (ảnh/gif hiển thị inline, file khác là thẻ)
+                            Column {
+                                anchors.left: parent.left
+                                anchors.leftMargin: 8
+                                spacing: 4
+                                visible: !model.deleted && model.attachments && model.attachments.length > 0
+                                Repeater {
+                                    model: msgItem.mAttachments
+                                    Loader {
+                                        sourceComponent: (modelData.kind === "image" || modelData.kind === "gif")
+                                                         ? imageAtt : fileAtt
+                                        property var att: modelData
+
+                                        Component {
+                                            id: imageAtt
+                                            Image {
+                                                source: att.url
+                                                asynchronous: true
+                                                fillMode: Image.PreserveAspectFit
+                                                sourceSize.width: 320
+                                                width: Math.min(implicitWidth, 320)
+                                                MouseArea {
+                                                    anchors.fill: parent
+                                                    cursorShape: Qt.PointingHandCursor
+                                                    onClicked: Qt.openUrlExternally(att.url)
+                                                }
+                                            }
+                                        }
+                                        Component {
+                                            id: fileAtt
+                                            Rectangle {
+                                                width: 240; height: 40; radius: 6
+                                                color: Theme.inputBg
+                                                Row {
+                                                    anchors.fill: parent
+                                                    anchors.leftMargin: 10
+                                                    spacing: 8
+                                                    Label { text: "📎"; anchors.verticalCenter: parent.verticalCenter }
+                                                    Label {
+                                                        text: att.filename
+                                                        color: Theme.textPrimary
+                                                        elide: Text.ElideRight
+                                                        width: 180
+                                                        anchors.verticalCenter: parent.verticalCenter
+                                                    }
+                                                }
+                                                MouseArea {
+                                                    anchors.fill: parent
+                                                    cursorShape: Qt.PointingHandCursor
+                                                    onClicked: Qt.openUrlExternally(att.url)
+                                                }
+                                            }
+                                        }
                                     }
-                                    MouseArea {
-                                        anchors.fill: parent
-                                        cursorShape: Qt.PointingHandCursor
-                                        onClicked: chatClient.toggleReaction(reactionFlow.msgId, modelData.emoji)
+                                }
+                            }
+
+                            // Chip reaction
+                            Flow {
+                                id: reactionFlow
+                                anchors.left: parent.left
+                                anchors.leftMargin: 8
+                                width: parent.width
+                                spacing: 4
+                                property var reactionsData: model.reactions
+                                property int msgId: model.messageId
+                                visible: reactionsData && reactionsData.length > 0
+
+                                Repeater {
+                                    model: reactionFlow.reactionsData
+                                    Rectangle {
+                                        height: 22
+                                        width: chipRow.implicitWidth + 14
+                                        radius: 11
+                                        color: Theme.inputBg
+
+                                        Row {
+                                            id: chipRow
+                                            anchors.centerIn: parent
+                                            spacing: 4
+                                            Label { text: modelData.emoji; font.pixelSize: 13 }
+                                            Label { text: modelData.count; color: Theme.textMuted; font.pixelSize: 12 }
+                                        }
+                                        MouseArea {
+                                            anchors.fill: parent
+                                            cursorShape: Qt.PointingHandCursor
+                                            onClicked: chatClient.toggleReaction(reactionFlow.msgId, modelData.emoji)
+                                        }
                                     }
                                 }
                             }
@@ -380,7 +526,6 @@ Item {
                             width: 212
                             x: moreBtn.width - width
                             y: moreBtn.height + 2
-                            padding: 6
                             onAboutToShow: {
                                 var topInList = moreBtn.mapToItem(list, 0, 0).y
                                 var spaceBelow = list.height - topInList
@@ -555,7 +700,6 @@ Item {
                         id: reactPopup
                         property int msgId: msgItem.mId
                         width: 280
-                        padding: 6
                         modal: false
                         // Canh phải; tự lật lên trên nếu không đủ chỗ bên dưới.
                         x: parent.width - width - 8
@@ -756,7 +900,6 @@ Item {
                             Popup {
                                 id: emojiPopup
                                 width: 336
-                                padding: 8
                                 modal: false
                                 x: emojiIcon.width - width
                                 y: -height - 8
@@ -837,13 +980,179 @@ Item {
     // Sự kiện upload từ ChatClient
     Connections {
         target: chatClient
+        function onAuthOk(userId, username, displayName, avatarUrl, bio) {
+            root.userId = userId
+            root.currentUserDisplayName = displayName || username || ""
+            root.currentUserAvatar = avatarUrl || ""
+            root.currentUserBio = bio || ""
+            root.settingsDisplayName = root.currentUserDisplayName
+            root.settingsAvatarUrl = root.currentUserAvatar
+            root.settingsBio = root.currentUserBio
+        }
+        function onProfileUpdated(avatarUrl, displayName, bio) {
+            root.currentUserAvatar = avatarUrl || ""
+            root.currentUserDisplayName = displayName || root.currentUserDisplayName
+            root.currentUserBio = bio || ""
+            root.settingsAvatarUrl = root.currentUserAvatar
+            root.settingsDisplayName = root.currentUserDisplayName
+            root.settingsBio = root.currentUserBio
+        }
+        function onUserProfileReceived(userId, username, displayName, avatarUrl, bio) {
+            if (root.profileTargetUserId === userId) {
+                root.profileTargetUsername = username || root.profileTargetUsername
+                root.profileTargetDisplayName = displayName || root.profileTargetDisplayName
+                root.profileTargetAvatar = avatarUrl || root.profileTargetAvatar
+                root.profileTargetBio = bio || root.profileTargetBio
+            }
+        }
         function onAttachmentUploaded(url, kind, filename, size) {
+            if (root.avatarUploadPending) {
+                root.avatarUploadPending = false
+                root.settingsAvatarUrl = url
+                root.currentUserAvatar = url
+                chatClient.updateProfileAvatar(url)
+                return
+            }
             root.pendingAttachments = root.pendingAttachments.concat([
                 { "url": url, "kind": kind, "filename": filename, "size": size }
             ])
         }
         function onUploadFailed(reason) {
+            root.avatarUploadPending = false
             console.log("Upload failed: " + reason)
+        }
+    }
+
+    Popup {
+        id: profilePopup
+        width: 280
+        modal: false
+        background: Rectangle {
+            color: Theme.surface
+            radius: Theme.radius
+            border.color: Theme.inputBg
+        }
+        contentItem: Item {
+            implicitWidth: 280
+            implicitHeight: 180
+            ColumnLayout {
+                anchors.fill: parent
+                anchors.margins: 12
+                spacing: 10
+                Rectangle {
+                    Layout.alignment: Qt.AlignHCenter
+                    width: 64
+                    height: 64
+                    radius: 32
+                    color: root.avatarColorForName(root.profileTargetDisplayName || root.profileTargetUsername || "?")
+                    clip: true
+                    Image {
+                        anchors.fill: parent
+                        visible: root.profileTargetAvatar && root.profileTargetAvatar.length > 0
+                        source: root.avatarImageSource(root.profileTargetAvatar)
+                        fillMode: Image.PreserveAspectCrop
+                        asynchronous: true
+                        cache: true
+                    }
+                    Label {
+                        anchors.centerIn: parent
+                        visible: !(root.profileTargetAvatar && root.profileTargetAvatar.length > 0)
+                        text: root.avatarInitial(root.profileTargetDisplayName || root.profileTargetUsername)
+                        color: Theme.textPrimary
+                        font.bold: true
+                        font.pixelSize: 24
+                    }
+                }
+                Label {
+                    text: root.profileTargetDisplayName || root.profileTargetUsername || qsTr("User")
+                    color: Theme.textPrimary
+                    font.bold: true
+                    font.pixelSize: Theme.fontNormal
+                }
+                Label {
+                    text: root.profileTargetUsername ? "@" + root.profileTargetUsername : ""
+                    color: Theme.textMuted
+                    font.pixelSize: Theme.fontSmall
+                }
+                Label {
+                    visible: root.profileTargetBio && root.profileTargetBio.length > 0
+                    text: root.profileTargetBio
+                    width: parent.width
+                    wrapMode: Text.WordWrap
+                    color: Theme.textPrimary
+                    font.pixelSize: Theme.fontSmall
+                }
+            }
+        }
+    }
+
+    Dialog {
+        id: settingsDialog
+        title: qsTr("Profile settings")
+        anchors.centerIn: parent
+        modal: true
+        width: 360
+        standardButtons: Dialog.Cancel | Dialog.Ok
+        onAccepted: root.saveProfile()
+        contentItem: Item {
+            implicitWidth: 360
+            implicitHeight: 240
+            ColumnLayout {
+                anchors.fill: parent
+                anchors.margins: 12
+                spacing: 10
+                Rectangle {
+                    Layout.alignment: Qt.AlignHCenter
+                    width: 72
+                    height: 72
+                    radius: 36
+                    color: root.avatarColorForName(root.settingsDisplayName || root.currentUserDisplayName || "?")
+                    clip: true
+                    Image {
+                        anchors.fill: parent
+                        visible: root.settingsAvatarUrl && root.settingsAvatarUrl.length > 0
+                        source: root.avatarImageSource(root.settingsAvatarUrl)
+                        fillMode: Image.PreserveAspectCrop
+                        asynchronous: true
+                        cache: true
+                    }
+                    Label {
+                        anchors.centerIn: parent
+                        visible: !(root.settingsAvatarUrl && root.settingsAvatarUrl.length > 0)
+                        text: root.avatarInitial(root.settingsDisplayName || root.currentUserDisplayName)
+                        color: Theme.textPrimary
+                        font.bold: true
+                        font.pixelSize: 28
+                    }
+                }
+                Button {
+                    text: qsTr("Change avatar")
+                    Layout.fillWidth: true
+                    onClicked: {
+                        var p = chatClient.chooseFile()
+                        if (p && p.length > 0) {
+                            root.avatarUploadPending = true
+                            chatClient.uploadAttachment(p)
+                        }
+                    }
+                }
+                TextField {
+                    id: profileDisplayName
+                    Layout.fillWidth: true
+                    text: root.settingsDisplayName
+                    placeholderText: qsTr("Display name")
+                    onTextChanged: root.settingsDisplayName = text
+                }
+                TextArea {
+                    id: profileBio
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: 90
+                    wrapMode: TextEdit.Wrap
+                    text: root.settingsBio
+                    placeholderText: qsTr("Bio")
+                    onTextChanged: root.settingsBio = text
+                }
+            }
         }
     }
 
@@ -854,7 +1163,6 @@ Item {
         anchors.centerIn: parent
         modal: true
         width: 340
-        padding: 16
         standardButtons: Dialog.Close
 
         contentItem: ColumnLayout {
@@ -914,8 +1222,8 @@ Item {
         anchors.centerIn: parent
         modal: true
         width: 340
-        padding: 16
         standardButtons: Dialog.Cancel | Dialog.Ok
+
         onAccepted: {
             if (newChannelName.text.trim().length > 0 && root.currentServerId !== 0) {
                 chatClient.createChannel(root.currentServerId, newChannelName.text.trim())

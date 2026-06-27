@@ -18,6 +18,9 @@ struct UserRecord {
     std::string username;
     std::string email;
     std::string display_name;
+    std::string avatar_url;
+    std::string bio;
+    std::string status;
 };
 
 struct ReactionCount {
@@ -37,6 +40,7 @@ struct MessageRecord {
     uint32_t    channel_id;
     uint32_t    author_id;
     std::string author_name;
+    std::string avatar_url;
     std::string content;
     uint32_t    created_at;
     uint32_t    reply_to_id = 0;     // 0 = không phải trả lời
@@ -78,6 +82,12 @@ public:
                                           const std::string& password_hash);
 
     std::optional<UserRecord> find_user(const std::string& username);
+    std::optional<UserRecord> get_user_profile(uint32_t user_id);
+    bool update_user_profile(uint32_t user_id,
+                             const std::string& display_name,
+                             const std::string& bio,
+                             const std::string& avatar_url);
+    bool update_user_avatar(uint32_t user_id, const std::string& avatar_url);
 
     // true nếu email đã được dùng.
     bool email_exists(const std::string& email);
