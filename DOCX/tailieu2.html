@@ -1,0 +1,620 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Kiến Trúc Dữ Liệu & Mô Hình Xử Lý Hệ Thống</title>
+    <style>
+        :root {
+            --primary-color: #2563eb;
+            --secondary-color: #1e40af;
+            --bg-color: #f8fafc;
+            --card-bg: #ffffff;
+            --text-color: #1e293b;
+            --text-muted: #64748b;
+            --border-color: #e2e8f0;
+            --accent-green: #10b981;
+            --accent-red: #ef4444;
+            --accent-amber: #f59e0b;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            line-height: 1.6;
+            margin: 0;
+            padding: 0;
+        }
+
+        .container {
+            max-width: 1100px;
+            margin: 40px auto;
+            padding: 0 20px;
+        }
+
+        header {
+            text-align: center;
+            margin-bottom: 50px;
+            border-bottom: 3px solid var(--primary-color);
+            padding-bottom: 20px;
+        }
+
+        header h1 {
+            color: var(--primary-color);
+            margin-bottom: 10px;
+            font-size: 2.5rem;
+        }
+
+        header p {
+            color: var(--text-muted);
+            font-size: 1.1rem;
+        }
+
+        h2 {
+            color: var(--secondary-color);
+            border-left: 5px solid var(--primary-color);
+            padding-left: 15px;
+            margin-top: 40px;
+            margin-bottom: 20px;
+            font-size: 1.8rem;
+        }
+
+        h3 {
+            color: #334155;
+            margin-top: 25px;
+            font-size: 1.3rem;
+        }
+
+        .card {
+            background: var(--card-bg);
+            border-radius: 8px;
+            padding: 24px;
+            margin-bottom: 25px;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+            border: 1px solid var(--border-color);
+        }
+
+        .grid-3 {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+
+        .db-card {
+            border-top: 4px solid var(--primary-color);
+        }
+        .db-card.sql { border-top-color: var(--accent-red); }
+        .db-card.redis { border-top-color: var(--accent-amber); }
+        .db-card.sqlite { border-top-color: var(--accent-green); }
+
+        .badge {
+            display: inline-block;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 0.85rem;
+            font-weight: 600;
+            margin-bottom: 10px;
+        }
+        .badge-sql { background: #fee2e2; color: #991b1b; }
+        .badge-redis { background: #fef3c7; color: #92400e; }
+        .badge-sqlite { background: #d1fae5; color: #065f46; }
+
+        .tech-info {
+            font-size: 0.95rem;
+            margin-bottom: 12px;
+        }
+        .tech-info strong { color: #0f172a; }
+
+        .analogy {
+            background-color: #f1f5f9;
+            padding: 12px 15px;
+            border-radius: 6px;
+            font-style: italic;
+            border-left: 3px solid var(--text-muted);
+            margin-bottom: 12px;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 15px 0 25px 0;
+            font-size: 0.95rem;
+        }
+
+        table th, table td {
+            border: 1px solid var(--border-color);
+            padding: 12px 15px;
+            text-align: left;
+        }
+
+        table th {
+            background-color: #f1f5f9;
+            color: #1e293b;
+            font-weight: 600;
+        }
+
+        table tr:nth-child(even) {
+            background-color: #f8fafc;
+        }
+
+        .note-box {
+            background-color: #fffbeb;
+            border: 1px solid #fef3c7;
+            border-left: 4px solid var(--accent-amber);
+            padding: 15px;
+            border-radius: 6px;
+            margin: 20px 0;
+        }
+        .note-box strong { color: #92400e; }
+
+        .danger-box {
+            background-color: #fef2f2;
+            border: 1px solid #fee2e2;
+            border-left: 4px solid var(--accent-red);
+            padding: 15px;
+            border-radius: 6px;
+            margin: 20px 0;
+        }
+        .danger-box strong { color: #991b1b; }
+
+        ul, ol {
+            padding-left: 20px;
+        }
+
+        li {
+            margin-bottom: 8px;
+        }
+
+        .flowchart {
+            background: #0f172a;
+            color: #38bdf8;
+            font-family: 'Courier New', Courier, monospace;
+            padding: 20px;
+            border-radius: 8px;
+            white-space: pre;
+            overflow-x: auto;
+            line-height: 1.4;
+            margin: 20px 0;
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <header>
+        <h1>Kiến Trúc Dữ Liệu & Mô Hình Xử Lý Đa Luồng</h1>
+        <p>Tài liệu phân tích kỹ thuật hệ thống kết hợp SQL Server, Redis, SQLite và WebRTC</p>
+    </header>
+
+    <h2>1. Chiến lược phân tầng dữ liệu (Database Layering)</h2>
+    <p>Hệ thống kết hợp đồng thời cả 3 giải pháp lưu trữ dữ liệu để tối ưu hóa hiệu năng toàn diện:</p>
+    
+    <div class="grid-3">
+        <div class="card db-card sql">
+            <span class="badge badge-sql">SQL Server (RDBMS)</span>
+            <div class="tech-info">
+                <strong>Bản chất kỹ thuật:</strong> Hệ quản trị cơ sở dữ liệu quan hệ (Relational), lưu trữ xuống đĩa cứng (Disk) theo cấu trúc bảng có ràng buộc nghiêm ngặt (PK, FK). Tuân thủ chặt chẽ tính chất ACID để đảm bảo dữ liệu an toàn khi mất điện đột ngột.
+            </div>
+            <div class="analogy">
+                <strong>Định nghĩa đơn giản:</strong> Giống như "Sổ cái tài chính" của công ty.
+            </div>
+            <div>
+                <strong>Ứng dụng:</strong> Lưu dữ liệu cực kỳ quan trọng, cần lưu vĩnh viễn và không được sai sót (Tài khoản, mật khẩu hash, lịch sử giao dịch, bạn bè).
+            </div>
+        </div>
+
+        <div class="card db-card redis">
+            <span class="badge badge-redis">Redis (In-Memory Database)</span>
+            <div class="tech-info">
+                <strong>Bản chất kỹ thuật:</strong> Cơ sở dữ liệu dạng Key-Value (Khóa - Giá trị) lưu trữ hoàn toàn trên RAM. Tốc độ đọc/ghi nhanh hơn đĩa cứng hàng ngàn lần, xử lý hàng trăm ngàn requests/s với độ trễ &lt; 1ms. Mất điện sẽ mất sạch dữ liệu nếu không cấu hình AOF/RDB.
+            </div>
+            <div class="analogy">
+                <strong>Định nghĩa đơn giản:</strong> Giống như "Bảng ghi nhớ (Sticky Notes)" trên bàn làm việc.
+            </div>
+            <div>
+                <strong>Ứng dụng:</strong> Lưu dữ liệu cần truy cập siêu nhanh, thay đổi liên tục (Trạng thái online/offline, Session token, phòng chat tạm thời).
+            </div>
+        </div>
+
+        <div class="card db-card sqlite">
+            <span class="badge badge-sqlite">SQLite (Embedded Database)</span>
+            <div class="tech-info">
+                <strong>Bản chất kỹ thuật:</strong> Thư viện cơ sở dữ liệu độc lập, chạy dạng Serverless (không có tiến trình Server riêng) mà được nhúng thẳng vào file chạy (.exe) của ứng dụng Client (Qt/C#). Toàn bộ DB gói gọn trong 1 file duy nhất trên máy người dùng.
+            </div>
+            <div class="analogy">
+                <strong>Định nghĩa đơn giản:</strong> Giống như "Sổ tay cá nhân" của Client.
+            </div>
+            <div>
+                <strong>Ứng dụng:</strong> Lưu dữ liệu cục bộ nhằm giảm tải cho Server (Lịch sử tin nhắn cũ để mở app lên là thấy ngay, cài đặt Dark/Light mode, cache avatar).
+            </div>
+        </div>
+    </div>
+
+    <h2>2. Đồng bộ hóa dữ liệu: Cơ chế Cache Aside Pattern</h2>
+    <div class="card">
+        <p>Để giải quyết bài toán dữ liệu giữa <strong>Redis</strong> và <strong>SQL Server</strong> không bị xung đột hoặc lệch nhau, hệ thống áp dụng mô hình <strong>Cache Aside</strong>:</p>
+        
+        <h3>Quy trình Đọc dữ liệu (Read):</h3>
+        <ol>
+            <li><strong>Đọc từ Redis trước:</strong> Nếu tìm thấy dữ liệu (Cache Hit), trả về ngay lập tức cho Client.</li>
+            <li><strong>Đọc từ SQL Server nếu thiếu:</strong> Nếu không thấy dữ liệu ở Redis (Cache Miss), Server sẽ truy vấn vào SQL Server &rarr; Trả dữ liệu cho Client &rarr; Đồng thời ghi ngược dữ liệu đó vào Redis kèm thời gian hết hạn (TTL - Time To Live).</li>
+        </ol>
+
+        <h3>Quy trình Cập nhật dữ liệu (Update):</h3>
+        <ul>
+            <li>Khi người dùng thay đổi thông tin (ví dụ: đổi tên), Server sẽ ghi tên mới vào <strong>SQL Server</strong> đầu tiên, sau đó thực hiện <strong>xóa (hoặc cập nhật) Key</strong> tương ứng trong <strong>Redis</strong> để tránh việc Client đọc phải dữ liệu cũ đã lỗi thời.</li>
+        </ul>
+    </div>
+
+    <h2>3. WebRTC & Giao thức ICE (Web Real-Time Communication)</h2>
+    <div class="card">
+        <p><strong>WebRTC</strong> là một tập hợp các tiêu chuẩn và giao thức (gồm <em>SRTP</em> mã hóa media, <em>SCTP</em> truyền dữ liệu, <em>STUN/TURN</em> đục tường lửa) phối hợp với nhau nhằm thiết lập kết nối trực tiếp <strong>Peer-to-Peer (P2P)</strong> giữa hai Client mà không cần đi qua Server.</p>
+        
+        <h3>Cơ chế thiết lập kết nối qua ICE (Interactive Connectivity Establishment):</h3>
+        <ol>
+            <li><strong>Thu thập ứng viên (Candidate):</strong> Client A tự kiểm tra tất cả các đường có thể kết nối mạng của mình (IP nội bộ, IP công cộng qua STUN, IP qua TURN). Mỗi đường kết nối này gọi là một <strong>ICE Candidate</strong>.</li>
+            <li><strong>Trao đổi SDP (Session Description Protocol):</strong> Hai bên gửi cho nhau một file văn bản chứa thông tin về codec âm thanh/hình ảnh hỗ trợ và danh sách các ICE Candidate vừa tìm được. Quá trình này gọi là <strong>Signaling</strong> (thường chạy qua Socket TCP của C++ Asio Server).</li>
+            <li><strong>Kiểm tra kết nối (Connectivity Checks):</strong> Hai bên thử bắt tay nhau qua các Candidate. Đường mạng nào ngắn nhất, nhanh nhất và không bị tường lửa chặn sẽ được chọn để truyền Voice/Video. Nếu thất bại hoàn toàn, hệ thống mới chuyển sang đi qua đường TURN của Coturn.</li>
+        </ol>
+    </div>
+
+    <h2>4. Mô hình xử lý bất đồng bộ trong C++ Asio: io_context & Thread Pool</h2>
+    <div class="card">
+        <p>Để đảm bảo backend C++ có thể xử lý hàng ngàn Client nhắn tin và gọi điện cùng lúc, cơ chế điều khiển luồng dựa vào trung tâm là đối tượng <code>asio::io_context</code> (một Event Loop - Vòng lặp sự kiện).</p>
+        
+        <p>Khi các thao tác mạng bất đồng bộ được đẩy xuống tầng OS và xử lý xong, OS sẽ ném các hàm xử lý kết quả (Completion Handlers/Callbacks) vào một hàng đợi (Queue) nằm trong <code>io_context</code>. Để xử lý các Callback này, ta cần gọi hàm <code>io_context.run()</code> theo một trong hai mô hình:</p>
+
+        <table>
+            <thead>
+                <tr>
+                    <th style="width: 30%">Mô hình</th>
+                    <th style="width: 35%">Cơ chế hoạt động</th>
+                    <th style="width: 35%">Ưu / Nhược điểm</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td><strong>Single-Thread (Đơn luồng)</strong></td>
+                    <td>Gọi <code>io_context.run()</code> ngay trong hàm <code>main</code>. Toàn bộ sự kiện mạng được xử lý tuần tự trên 1 luồng duy nhất.</td>
+                    <td><span style="color: var(--accent-green);">✔</span> An toàn, không sợ xung đột dữ liệu (Thread-safety).<br><span style="color: var(--accent-red);">✘</span> Không tận dụng được CPU đa nhân.</td>
+                </tr>
+                <tr>
+                    <td><strong>Multi-Thread / Thread Pool (Đa luồng)</strong></td>
+                    <td>Tạo ra một nhóm gồm $N$ luồng (thường bằng số nhân CPU) và luồng nào cũng gọi <code>io_context.run()</code>. Các luồng cùng nhảy vào hàng đợi để nhặt việc ra làm song song.</td>
+                    <td><span style="color: var(--accent-green);">✔</span> Tận dụng tối đa hiệu năng phần cứng đa nhân.<br><span style="color: var(--accent-red);">✘</span> Rủi ro xung đột dữ liệu (Race Condition).</td>
+                </tr>
+            </tbody>
+        </table>
+
+        <div class="danger-box">
+            <strong>LƯU Ý CHÍ MẠNG KHI DÙNG THREAD POOL:</strong> 
+            Vì các hàm Callback có thể chạy đồng thời trên các luồng khác nhau, nếu hai luồng cùng lúc sửa đổi dữ liệu phòng chat hoặc ghi dữ liệu vào SQL Server, bạn <strong>bắt buộc</strong> phải dùng Mutex (<code>std::mutex</code>) hoặc cơ chế Strand (<code>asio::strand</code>) của Asio để xếp hàng các tác vụ, tránh làm hỏng bộ nhớ (Race Condition).
+        </div>
+    </div>
+
+    <h2>5. Thiết kế dữ liệu lưu trong SQL Server</h2>
+    <p>Dưới đây là các phân hệ dữ liệu lõi cần được lưu trữ vĩnh viễn và đảm bảo ràng buộc chặt chẽ trong SQL Server:</p>
+
+    <div class="card">
+        <h3>5.1. Phân hệ Quản lý Tài khoản (User Management)</h3>
+        <p>Dữ liệu định danh người dùng cần bảo mật và kiểm tra ràng buộc duy nhất (Unique).</p>
+        
+        <h4>Bảng: Users (Người dùng)</h4>
+        <table>
+            <thead>
+                <tr>
+                    <th>Tên cột (Column Name)</th>
+                    <th>Kiểu dữ liệu</th>
+                    <th>Ràng buộc / Ghi chú</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td><strong>UserID</strong></td>
+                    <td>INT</td>
+                    <td>Primary Key, Identity (Mã định danh duy nhất của user)</td>
+                </tr>
+                <tr>
+                    <td><strong>Username</strong></td>
+                    <td>VARCHAR(50)</td>
+                    <td>Unique (Tên đăng nhập)</td>
+                </tr>
+                <tr>
+                    <td><strong>PasswordHash</strong></td>
+                    <td>VARCHAR(255)</td>
+                    <td>Mật khẩu đã được băm kèm Salt (BCrypt/SHA-256). Tuyệt đối không lưu mật khẩu thô.</td>
+                </tr>
+                <tr>
+                    <td><strong>DisplayName</strong></td>
+                    <td>NVARCHAR(100)</td>
+                    <td>Tên hiển thị (Hỗ trợ tiếng Việt có dấu)</td>
+                </tr>
+                <tr>
+                    <td><strong>AvatarURL</strong></td>
+                    <td>VARCHAR(255)</td>
+                    <td>Đường dẫn tới file ảnh đại diện</td>
+                </tr>
+                <tr>
+                    <td><strong>CreatedAt</strong></td>
+                    <td>DATETIME</td>
+                    <td>Thời gian tạo tài khoản</td>
+                </tr>
+            </tbody>
+        </table>
+
+        <h4>Bảng: Friendships (Mối quan hệ bạn bè)</h4>
+        <table>
+            <thead>
+                <tr>
+                    <th>Tên cột (Column Name)</th>
+                    <th>Kiểu dữ liệu</th>
+                    <th>Ràng buộc / Ghi chú</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td><strong>UserSrcID</strong></td>
+                    <td>INT</td>
+                    <td>Foreign Key (ID người gửi lời mời)</td>
+                </tr>
+                <tr>
+                    <td><strong>UserDstID</strong></td>
+                    <td>INT</td>
+                    <td>Foreign Key (ID người nhận lời mời)</td>
+                </tr>
+                <tr>
+                    <td><strong>Status</strong></td>
+                    <td>TINYINT</td>
+                    <td>0: Đang chờ duyệt, 1: Đã là bạn bè, 2: Đã chặn/Block</td>
+                </tr>
+                <tr>
+                    <td><strong>UpdatedAt</strong></td>
+                    <td>DATETIME</td>
+                    <td>Thời gian cập nhật trạng thái gần nhất</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+
+    <div class="card">
+        <h3>5.2. Phân hệ Tin nhắn (Messaging System)</h3>
+        <p>Mặc dù Client có SQLite để đọc offline, SQL Server vẫn cần lưu toàn bộ lịch sử để phục vụ việc đồng bộ khi người dùng đăng nhập thiết bị mới.</p>
+
+        <h4>Bảng: Channels / Groups (Phòng Chat/Nhóm Chat)</h4>
+        <table>
+            <thead>
+                <tr>
+                    <th>Tên cột</th>
+                    <th>Kiểu dữ liệu</th>
+                    <th>Ràng buộc / Ghi chú</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td><strong>ChannelID</strong></td>
+                    <td>INT</td>
+                    <td>Primary Key, Identity</td>
+                </tr>
+                <tr>
+                    <td><strong>ChannelName</strong></td>
+                    <td>NVARCHAR(100)</td>
+                    <td>Nullable (Nếu là chat đôi 1-1 thì để trống)</td>
+                </tr>
+                <tr>
+                    <td><strong>IsGroup</strong></td>
+                    <td>BIT</td>
+                    <td>0 nếu là chat đôi, 1 nếu là chat nhóm nhiều người</td>
+                </tr>
+                <tr>
+                    <td><strong>InviteCode</strong></td>
+                    <td>VARCHAR(20)</td>
+                    <td>Unique, Nullable (Chuỗi mã ngẫu nhiên phục vụ tính năng vào nhóm cố định)</td>
+                </tr>
+                <tr>
+                    <td><strong>IsLinkInviteEnabled</strong></td>
+                    <td>BIT</td>
+                    <td>1: Cho phép vào bằng link, 0: Khóa tính năng</td>
+                </tr>
+                <tr>
+                    <td><strong>CreatedAt</strong></td>
+                    <td>DATETIME</td>
+                    <td>Ngày tạo phòng</td>
+                </tr>
+            </tbody>
+        </table>
+
+        <h4>Bảng: ChannelMembers (Thành viên phòng chat)</h4>
+        <p><em>* Ghi chú: Khóa chính (Primary Key) là sự kết hợp của cả 2 cột (ChannelID, UserID).</em></p>
+        <table>
+            <thead>
+                <tr>
+                    <th>Tên cột</th>
+                    <th>Kiểu dữ liệu</th>
+                    <th>Ràng buộc / Ghi chú</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td><strong>ChannelID</strong></td>
+                    <td>INT</td>
+                    <td>Foreign Key từ bảng Channels</td>
+                </tr>
+                <tr>
+                    <td><strong>UserID</strong></td>
+                    <td>INT</td>
+                    <td>Foreign Key từ bảng Users</td>
+                </tr>
+                <tr>
+                    <td><strong>Role</strong></td>
+                    <td>TINYINT</td>
+                    <td>0: Thành viên, 1: Trưởng nhóm/Admin</td>
+                </tr>
+            </tbody>
+        </table>
+
+        <h4>Bảng: Messages (Lịch sử tin nhắn text)</h4>
+        <table>
+            <thead>
+                <tr>
+                    <th>Tên cột</th>
+                    <th>Kiểu dữ liệu</th>
+                    <th>Ràng buộc / Ghi chú</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td><strong>MessageID</strong></td>
+                    <td>BIGINT</td>
+                    <td>Primary Key, Identity (Dùng BIGINT đề phòng số lượng tăng nhanh)</td>
+                </tr>
+                <tr>
+                    <td><strong>ChannelID</strong></td>
+                    <td>INT</td>
+                    <td>Foreign Key</td>
+                </tr>
+                <tr>
+                    <td><strong>SenderID</strong></td>
+                    <td>INT</td>
+                    <td>Foreign Key</td>
+                </tr>
+                <tr>
+                    <td><strong>MessageType</strong></td>
+                    <td>TINYINT</td>
+                    <td>0: Text thuần túy, 1: Hình ảnh, 2: File đính kèm</td>
+                </tr>
+                <tr>
+                    <td><strong>EncryptedContent</strong></td>
+                    <td>VARBINARY(MAX) / TEXT</td>
+                    <td>Nội dung tin nhắn đã được mã hóa lai (RSA + AES). Server chỉ lưu chứ không thể đọc nội dung gốc.</td>
+                </tr>
+                <tr>
+                    <td><strong>Timestamp</strong></td>
+                    <td>DATETIME</td>
+                    <td>Thời gian tin nhắn được ghi nhận tại Server</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+
+    <div class="card">
+        <h3>5.3. Phân hệ Nhật ký Cuộc gọi (Call Log)</h3>
+        <p>Phục vụ tính năng hiển thị lịch sử cuộc gọi (Voice/Video) trên giao diện Qt/C# của Client.</p>
+
+        <h4>Bảng: CallLogs</h4>
+        <table>
+            <thead>
+                <tr>
+                    <th>Tên cột</th>
+                    <th>Kiểu dữ liệu</th>
+                    <th>Ràng buộc / Ghi chú</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td><strong>CallID</strong></td>
+                    <td>VARCHAR(50)</td>
+                    <td>Primary Key (Chuỗi GUID ngẫu nhiên sinh ra khi bắt đầu cuộc gọi)</td>
+                </tr>
+                <tr>
+                    <td><strong>CallerID</strong></td>
+                    <td>INT</td>
+                    <td>Foreign Key (Người chủ động gọi)</td>
+                </tr>
+                <tr>
+                    <td><strong>CalleeID</strong></td>
+                    <td>INT</td>
+                    <td>Foreign Key (Người nhận cuộc gọi - Nếu gọi nhóm cần thiết kế bảng liên kết riêng)</td>
+                </tr>
+                <tr>
+                    <td><strong>CallType</strong></td>
+                    <td>TINYINT</td>
+                    <td>0: Cuộc gọi Voice, 1: Cuộc gọi Video</td>
+                </tr>
+                <tr>
+                    <td><strong>StartTime</strong></td>
+                    <td>DATETIME</td>
+                    <td>Thời gian bắt đầu kết nối thành công</td>
+                </tr>
+                <tr>
+                    <td><strong>EndTime</strong></td>
+                    <td>DATETIME</td>
+                    <td>Nullable (Thời gian gác máy)</td>
+                </tr>
+                <tr>
+                    <td><strong>Status</strong></td>
+                    <td>TINYINT</td>
+                    <td>0: Gọi nhỡ/Missed, 1: Thành công/Connected, 2: Máy bận/Busy, 3: Từ chối/Rejected</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+
+    <h2>6. Dữ liệu TUYỆT ĐỐI KHÔNG LƯU trong SQL Server (Đẩy sang Redis)</h2>
+    <div class="card" style="border-left: 5px solid var(--accent-red);">
+        <p>Để Server C++ không bị nghẽn cổ chai I/O do giới hạn tốc độ đọc ghi đĩa cứng của RDBMS, các loại dữ liệu thay đổi liên tục hoặc tạm thời sau đây bắt buộc phải lưu trên RAM của Redis:</p>
+        <ul>
+            <li><strong>Trạng thái Online/Offline (User Status):</strong> User bật/tắt app hoặc mất mạng liên tục, nếu update vào SQL Server sẽ gây quá tải đĩa. Lưu ở Redis dưới dạng: <code>Key: User:123:Status -> Value: "Online"</code>.</li>
+            <li><strong>Mã Token phiên làm việc (Session Token/JWT):</strong> Dùng để xác thực liên tục mỗi khi Client gửi request hoặc chat. Lưu ở Redis giúp truy vấn tốc độ cao &lt; 1ms.</li>
+            <li><strong>Tín hiệu bắt tay WebRTC (SDP / ICE Candidates tạm thời):</strong> Quá trình trao đổi diễn ra rất nhanh trong vài giây rồi bỏ. Nên dùng cơ chế <strong>Pub/Sub của Redis</strong> hoặc lưu tạm trên RAM để chuyển tiếp, không lưu vào ổ cứng.</li>
+            <li><strong>Link/Mã mời tham gia phòng chat tạm thời (Có thời hạn):</strong> Lưu bằng tính năng tự hủy <strong>TTL (Time-to-Live)</strong> của Redis. 
+                <br><em>Ví dụ:</em> <code>Key: invite:code:xyz123</code> | <code>Value (JSON): {"ChannelID": 102, "InviterID": 5, "Type": "Group"}</code> | <code>Expire: 300 giây (5 phút)</code>.
+            </li>
+        </ul>
+    </div>
+
+    <h2>7. Quy trình Tính năng "Mời vào nhóm bằng Link & QR Code"</h2>
+    <div class="card">
+        <h3>7.1. Bước 1: Phía Người mời (Tạo Link & QR)</h3>
+        <ol>
+            <li>Client gửi yêu cầu "Tạo link mời" lên C++ Server qua Socket.</li>
+            <li>Server sinh chuỗi ngẫu nhiên không trùng lặp (ví dụ mã hóa chuỗi 8 ký tự: <code>aB8fX2qZ</code>).</li>
+            <li>Server lưu chuỗi vào SQL Server (nếu vĩnh viễn) hoặc Redis (nếu tạm thời kèm TTL).</li>
+            <li>Server trả chuỗi về cho Client dưới dạng một URL hoàn chỉnh sử dụng Deep Link/Custom Protocol: <code>myapp://join/aB8fX2qZ</code>. Hệ điều hành sẽ tự mở app khi bấm link thay vì mở trình duyệt.</li>
+            <li><strong>Tạo QR Code tại máy Client:</strong> Để tiết kiệm băng thông Server, Client tự biến chuỗi URL thành ảnh QR:
+                <ul>
+                    <li>Nếu dùng <strong>C#</strong>: Tích hợp thư viện <code>QRCoder</code>.</li>
+                    <li>Nếu dùng <strong>Qt (C++)</strong>: Tích hợp thư viện <code>QrCodeGenerator</code>.</li>
+                </ul>
+            </li>
+        </ol>
+
+        <h3>7.2. Quy trình Xử lý khi Người nhận quét QR hoặc bấm Link</h3>
+        <div class="flowchart">
+[ Người nhận bấm Link / Quét QR ]
+               |
+               v
+(Trích xuất chuỗi mã) ---> Ví dụ lấy được: "aB8fX2qZ"
+               |
+               v
+[ Client gửi mã lên C++ Server ]
+               |
+               v
+[ Server kiểm tra tính hợp lệ ]
+   - Bước A: Tìm trong Redis (Link tạm thời) -> Nếu có, lấy ChannelID.
+   - Bước B: Tìm trong SQL Server (Link nhóm) -> Nếu có, lấy ChannelID + Kiểm tra tính năng cho phép vào bằng link.
+               |
+               v
+      (Mã hợp lệ không?)
+       /           \
+     (Có)         (Không/Hết hạn) ---> Báo lỗi về Client
+       |
+       v
+[ Thực hiện Logic Tham Gia ]
+   1. Thêm User vào bảng `ChannelMembers` trong SQL Server.
+   2. Server gửi thông báo qua Socket tới toàn bộ thành viên cũ: "User X đã tham gia phòng bằng Link".
+   3. Trả về giao diện phòng chat mới cho Client vừa vào.</div>
+
+        <div class="note-box">
+            <strong>LƯU Ý NÂNG CAO VỀ BẢO MẬT:</strong>
+            <ul>
+                <li><strong>Chống Spam/Dò mã (Brute-force):</strong> Mã mời (InviteCode) phải có độ dài tối thiểu từ 8-12 ký tự bao gồm cả chữ hoa, chữ thường và chữ số.</li>
+                <li><strong>Tính năng phê duyệt (Pending Approval):</strong> Với nhóm bảo mật cao, khi người dùng bấm link, hãy chuyển trạng thái của họ vào danh sách chờ trong SQL Server. Đồng thời gửi một Notification qua Socket đến Admin nhóm: <em>"User B muốn vào nhóm bằng link của bạn, bạn có đồng ý không?"</em>. Khi Admin bấm duyệt, Server mới thêm vào bảng <code>ChannelMembers</code>.</li>
+            </ul>
+        </div>
+    </div>
+</div>
+
+</body>
+</html>

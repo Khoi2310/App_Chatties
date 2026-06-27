@@ -1,0 +1,42 @@
+{
+  "server": {
+    "host": "0.0.0.0",
+    "port": 8080,
+    "voice_port": 8081,
+    "video_port": 8082,
+    "max_connections": 10000,
+    "connection_timeout_ms": 30000
+  },
+  "database": {
+    "host": "localhost",
+    "port": 3306,
+    "name": "chatties_db",
+    "user": "chatties_user",
+    "pool_size": 20
+  },
+  "redis": {
+    "host": "localhost",
+    "port": 6379,
+    "db": 0,
+    "password": ""
+  },
+  "logging": {
+    "level": "info",
+    "file": "logs/server.log",
+    "max_file_size_mb": 100,
+    "backup_count": 5
+  },
+  "media": {
+    "audio": {
+      "sample_rate": 48000,
+      "channels": 2,
+      "bitrate": 128000
+    },
+    "video": {
+      "width": 1280,
+      "height": 720,
+      "fps": 30,
+      "bitrate": 2500000
+    }
+  }
+}

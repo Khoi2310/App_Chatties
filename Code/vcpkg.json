@@ -1,0 +1,14 @@
+{
+  "name": "discord-clone-server",
+  "version-string": "1.0.0",
+  "dependencies": [
+    "boost-asio",
+    "boost-system",
+    "nlohmann-json",
+    "sqlite3",
+    "sqlitecpp",
+    "libsodium",
+    "cpp-httplib"
+  ],
+  "builtin-baseline": "44819aa2a6c10e56065e2b0330e7d6c89d1d2574"
+}

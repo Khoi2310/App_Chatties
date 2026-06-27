@@ -1,0 +1,36 @@
+{
+  "client": {
+    "app_name": "Chatties",
+    "version": "1.0.0"
+  },
+  "server": {
+    "default_host": "localhost",
+    "default_port": 8080,
+    "voice_port": 8081,
+    "video_port": 8082,
+    "connection_timeout_ms": 30000
+  },
+  "database": {
+    "local_db": "chatties_cache.db"
+  },
+  "ui": {
+    "theme": "dark",
+    "default_window_width": 1600,
+    "default_window_height": 900
+  },
+  "media": {
+    "audio": {
+      "input_device": "default",
+      "output_device": "default",
+      "sample_rate": 48000
+    },
+    "video": {
+      "camera_device": 0,
+      "resolution": "1280x720"
+    }
+  },
+  "logging": {
+    "level": "info",
+    "file": "logs/client.log"
+  }
+}
