@@ -139,7 +139,9 @@ Item {
         anchors.fill: parent
         spacing: 0
 
-        // ── Cột 1: dãy server ──────────────────────────────────
+        ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+        // ── Cột 1: dãy server ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+        ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
         Rectangle {
             Layout.fillHeight: true
             Layout.preferredWidth: 68
@@ -359,7 +361,9 @@ Item {
             }
         }
 
-        // ── Cột 2: danh sách channel ───────────────────────────
+        ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+        // ── Cột 2: danh sách channel ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+        ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
         Rectangle {
             Layout.fillHeight: true
             Layout.preferredWidth: 190
@@ -414,7 +418,10 @@ Item {
             }
         }
 
-        // ── Cột 3: tin nhắn + ô soạn ───────────────────────────
+
+        ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+        // ── Cột 3: tin nhắn + ô soạn /////////////////////////////////////////////////////////////////////////////////////////
+        ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
         ColumnLayout {
             Layout.fillWidth: true
             Layout.fillHeight: true
@@ -447,7 +454,7 @@ Item {
                 delegate: Item {
                     id: msgItem
                     width: ListView.view ? ListView.view.width : 0
-                    implicitHeight: Math.max(msgCol.implicitHeight, 32)
+                    height: msgCol.implicitHeight
 
                     // Lưu lại giá trị từ model (Popup nằm ở overlay nên không
                     // truy cập được "model" trực tiếp bên trong).
@@ -460,53 +467,51 @@ Item {
 
                     HoverHandler { id: msgHover }
 
-                    RowLayout {
-                        id: msgRow
-                        width: parent.width
-                        spacing: 8
-
-                        Rectangle {
-                            id: avatarBubble
-                            Layout.preferredWidth: 32
-                            Layout.preferredHeight: 32
-                            radius: 16
-                            color: root.avatarColorForName(msgItem.mUser || "?")
-                            clip: true
-                            Image {
-                                anchors.fill: parent
-                                visible: msgItem.mAvatar && msgItem.mAvatar.length > 0
-                                source: root.avatarImageSource(msgItem.mAvatar)
-                                fillMode: Image.PreserveAspectCrop
-                                asynchronous: true
-                                cache: true
-                            }
-                            Label {
-                                anchors.centerIn: parent
-                                visible: !(msgItem.mAvatar && msgItem.mAvatar.length > 0)
-                                text: root.avatarInitial(msgItem.mUser)
-                                color: Theme.textPrimary
-                                font.bold: true
-                                font.pixelSize: 14
-                            }
-                            MouseArea {
-                                anchors.fill: parent
-                                cursorShape: Qt.PointingHandCursor
-                                onClicked: {
-                                    if (msgItem.mAuthor === root.userId) {
-                                        root.openSettings()
-                                    } else {
-                                        root.showUserProfile(msgItem.mAuthor, msgItem.mUser, msgItem.mAvatar, msgItem.mUser, "")
-                                    }
+                    Rectangle {
+                        id: avatarBubble
+                        anchors.top: parent.top
+                        anchors.left: parent.left
+                        width: 32
+                        height: 32
+                        radius: width / 2
+                        color: root.avatarColorForName(msgItem.mUser || "?")
+                        clip: true
+                        Image {
+                            anchors.fill: parent
+                            visible: msgItem.mAvatar && msgItem.mAvatar.length > 0
+                            source: root.avatarImageSource(msgItem.mAvatar)
+                            fillMode: Image.PreserveAspectCrop
+                            asynchronous: true
+                            cache: true
+                        }
+                        Label {
+                            anchors.centerIn: parent
+                            visible: !(msgItem.mAvatar && msgItem.mAvatar.length > 0)
+                            text: root.avatarInitial(msgItem.mUser)
+                            color: Theme.textPrimary
+                            font.bold: true
+                            font.pixelSize: 14
+                        }
+                        MouseArea {
+                            anchors.fill: parent
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: {
+                                if (msgItem.mAuthor === root.userId) {
+                                    root.openSettings()
+                                } else {
+                                    root.showUserProfile(msgItem.mAuthor, msgItem.mUser, msgItem.mAvatar, msgItem.mUser, "")
                                 }
                             }
                         }
+                    }
 
-                        
-
-                        Column {
-                            id: msgCol
-                            Layout.fillWidth: true
-                            spacing: 1
+                    Column {
+                        id: msgCol
+                        anchors.top: parent.top
+                        anchors.left: avatarBubble.right
+                        anchors.leftMargin: 8
+                        anchors.right: parent.right
+                        spacing: 1
 
                             // Trích dẫn tin được trả lời
                             Label {
@@ -636,7 +641,6 @@ Item {
                                 }
                             }
                         }
-                    }
 
                     // Nút ⋯ tròn (hiện khi rê chuột) → menu hành động icon-only
                     Rectangle {
