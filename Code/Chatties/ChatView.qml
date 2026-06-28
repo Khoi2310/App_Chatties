@@ -433,7 +433,7 @@ Item {
                 Layout.fillWidth: true
                 Layout.fillHeight: true
                 clip: true
-                spacing: 8
+                spacing: 2
                 model: messageModel
 
                 // Không nảy khi cuộn tới biên.
@@ -454,7 +454,6 @@ Item {
                 delegate: Item {
                     id: msgItem
                     width: ListView.view ? ListView.view.width : 0
-                    height: msgCol.implicitHeight
 
                     // Lưu lại giá trị từ model (Popup nằm ở overlay nên không
                     // truy cập được "model" trực tiếp bên trong).
@@ -464,16 +463,27 @@ Item {
                     property string mContent:     model.content
                     property var    mAttachments: model.attachments
                     property string mAvatar:      model.avatarUrl
+                    // Discord-style: cùng author liên tiếp → ẩn avatar + username, giữ indent.
+                    property bool groupedWithPrevious: {
+                        if (index <= 0) return false
+                        var prev = messageModel.index(index - 1, 0)
+                        if (!prev.valid) return false
+                        return messageModel.data(prev, 260) === model.authorId
+                    }
+                    property real groupLeadGap: groupedWithPrevious ? 0 : 6
+                    height: groupLeadGap + msgCol.implicitHeight
 
                     HoverHandler { id: msgHover }
 
                     Rectangle {
                         id: avatarBubble
                         anchors.top: parent.top
+                        anchors.topMargin: groupLeadGap
                         anchors.left: parent.left
                         width: 32
                         height: 32
                         radius: width / 2
+                        opacity: groupedWithPrevious ? 0 : 1
                         color: root.avatarColorForName(msgItem.mUser || "?")
                         clip: true
                         Image {
@@ -494,6 +504,7 @@ Item {
                         }
                         MouseArea {
                             anchors.fill: parent
+                            enabled: !groupedWithPrevious
                             cursorShape: Qt.PointingHandCursor
                             onClicked: {
                                 if (msgItem.mAuthor === root.userId) {
@@ -508,6 +519,7 @@ Item {
                     Column {
                         id: msgCol
                         anchors.top: parent.top
+                        anchors.topMargin: groupLeadGap
                         anchors.left: avatarBubble.right
                         anchors.leftMargin: 8
                         anchors.right: parent.right
@@ -525,8 +537,10 @@ Item {
                                 elide: Text.ElideRight
                             }
                             Label {
+                                id: usernameLabel
                                 anchors.left: parent.left
                                 anchors.leftMargin: 8
+                                visible: !groupedWithPrevious
                                 text: (model.username && model.username.length ? model.username : "?")
                                 color: Theme.accent
                                 font.bold: true
@@ -564,12 +578,22 @@ Item {
 
                                         Component {
                                             id: imageAtt
-                                            Image {
-                                                source: att.url
-                                                asynchronous: true
-                                                fillMode: Image.PreserveAspectFit
-                                                sourceSize.width: 320
-                                                width: Math.min(implicitWidth, 320)
+                                            Rectangle {
+                                                radius: 10
+                                                clip: true
+                                                color: "transparent"
+                                                width: img.width
+                                                height: img.height
+
+                                                Image {
+                                                    id: img
+                                                    source: att.url
+                                                    asynchronous: true
+                                                    fillMode: Image.PreserveAspectFit
+                                                    sourceSize.width: 320
+                                                    width: Math.min(implicitWidth > 0 ? implicitWidth : sourceSize.width, 320)
+                                                }
+
                                                 MouseArea {
                                                     anchors.fill: parent
                                                     cursorShape: Qt.PointingHandCursor
@@ -577,6 +601,7 @@ Item {
                                                 }
                                             }
                                         }
+                                        
                                         Component {
                                             id: fileAtt
                                             Rectangle {
