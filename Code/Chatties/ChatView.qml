@@ -81,6 +81,11 @@ Item {
         return url && String(url).trim().length > 0 ? String(url) : ""
     }
 
+    // Nhãn cho vạch phân chia ngày, vd: "May 29, 2026" — giống style Discord trong ảnh mẫu.
+    function formatDateDivider(date) {
+        return Qt.formatDate(date, "MMMM d, yyyy")
+    }
+
     function showUserProfile(userId, username, avatarUrl, displayName, bio) {
         profileTargetUserId = userId
         profileTargetUsername = username || ""
@@ -421,8 +426,23 @@ Item {
                     property string mContent:     model.content
                     property var    mAttachments: model.attachments
                     property string mAvatar:      model.avatarUrl
+
+                    // Tin nhắn đầu tiên của một ngày mới → hiện vạch phân chia ngày.
+                    property bool isNewDay: {
+                        if (index <= 0) return true
+                        var prevTs = messageModel.data(messageModel.index(index - 1, 0), 259)
+                        if (prevTs === undefined || prevTs === null) return true
+                        var cur  = new Date(model.timestamp * 1000)
+                        var prev = new Date(prevTs * 1000)
+                        return cur.getFullYear() !== prev.getFullYear()
+                            || cur.getMonth()    !== prev.getMonth()
+                            || cur.getDate()     !== prev.getDate()
+                    }
+                    property real dividerHeight: isNewDay ? 32 : 0
+
                     // Discord-style: cùng author liên tiếp → ẩn avatar + username, giữ indent.
                     property bool groupedWithPrevious: {
+                        if (isNewDay) return false
                         if (index <= 0) return false
                         var prev = messageModel.index(index - 1, 0)
                         if (!prev.valid) return false
@@ -430,14 +450,50 @@ Item {
                     }
                     property bool mGrouped: groupedWithPrevious
                     property real groupLeadGap: groupedWithPrevious ? 0 : 6
-                    height: groupLeadGap + msgCol.implicitHeight
+                    height: dividerHeight + groupLeadGap + msgCol.implicitHeight
 
                     HoverHandler { id: msgHover }
+
+                    // ── Vạch phân chia ngày (vd: "Today" / "May 29, 2026") ──
+                    Item {
+                        id: dateDivider
+                        visible: msgItem.isNewDay
+                        anchors.top: parent.top
+                        anchors.left: parent.left
+                        anchors.right: parent.right
+                        height: msgItem.dividerHeight
+
+                        Rectangle {
+                            anchors.verticalCenter: parent.verticalCenter
+                            anchors.left: parent.left
+                            anchors.right: parent.right
+                            height: 1
+                            color: Theme.textMuted
+                            opacity: 0.25
+                        }
+
+                        Rectangle {
+                            anchors.centerIn: parent
+                            color: Theme.background
+                            radius: 4
+                            height: dateLabel.implicitHeight + 4
+                            width: dateLabel.implicitWidth + 16
+
+                            Label {
+                                id: dateLabel
+                                anchors.centerIn: parent
+                                text: root.formatDateDivider(new Date(model.timestamp * 1000))
+                                color: Theme.textMuted
+                                font.bold: true
+                                font.pixelSize: Theme.fontSmall
+                            }
+                        }
+                    }
 
                     Rectangle {
                         id: avatarBubble
                         anchors.top: parent.top
-                        anchors.topMargin: groupLeadGap
+                        anchors.topMargin: msgItem.dividerHeight + groupLeadGap
                         anchors.left: parent.left
                         width: 32
                         height: 32
@@ -484,7 +540,7 @@ Item {
                     Column {
                         id: msgCol
                         anchors.top: parent.top
-                        anchors.topMargin: groupLeadGap
+                        anchors.topMargin: msgItem.dividerHeight + groupLeadGap
                         anchors.left: avatarBubble.right
                         anchors.leftMargin: 8
                         anchors.right: parent.right
