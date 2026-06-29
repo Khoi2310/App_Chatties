@@ -27,6 +27,7 @@ QVariant MessageModel::data(const QModelIndex& index, int role) const {
         case DeletedRole:       return it.deleted;
         case ReactionsRole:     return it.reactions;
         case AttachmentsRole:   return it.attachments;
+        case AvatarUrlRole:     return it.avatarUrl;
         default:                return {};
     }
 }
@@ -44,7 +45,8 @@ QHash<int, QByteArray> MessageModel::roleNames() const {
         { EditedRole,        "edited"        },
         { DeletedRole,       "deleted"       },
         { ReactionsRole,     "reactions"     },
-        { AttachmentsRole,   "attachments"   }
+        { AttachmentsRole,   "attachments"   },
+        { AvatarUrlRole,     "avatarUrl"     }
     };
 }
 
@@ -88,6 +90,7 @@ static MessageModel::Item itemFromJson(const QJsonObject& o) {
     it.deleted       = o.value("deleted").toBool();
     it.reactions     = reactionsFromJson(o.value("reactions").toArray());
     it.attachments   = attachmentsFromJson(o.value("attachments").toArray());
+    it.avatarUrl     = o.value("avatar_url").toString();
     return it;
 }
 

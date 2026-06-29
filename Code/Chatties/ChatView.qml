@@ -2,6 +2,7 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 import Chatties
+// import Qt5Compat.GraphicalEffects
 
 Item {
     id: root
@@ -25,6 +26,19 @@ Item {
     property string replyingToName: ""
     property int    userId: 0
     property int    editingId: 0
+    property string currentUserDisplayName: ""
+    property string currentUserAvatar: ""
+    property string currentUserBio: ""
+    property int    profileTargetUserId: 0
+    property string profileTargetUsername: ""
+    property string profileTargetDisplayName: ""
+    property string profileTargetAvatar: ""
+    property string profileTargetBio: ""
+    property bool   avatarUploadPending: false
+    property string settingsDisplayName: ""
+    property string settingsBio: ""
+    property string settingsAvatarUrl: ""
+    
 
     // Đính kèm đang chờ gửi: [{url, kind, filename, size}]
     property var    pendingAttachments: []
@@ -41,6 +55,61 @@ Item {
         chatClient.selectChannel(id)
     }
 
+    function avatarColorForName(name) {
+        var base = String(name || "?").toUpperCase()
+        var sum = 0
+        for (var i = 0; i < base.length; ++i) sum += base.charCodeAt(i)
+        var palette = ["#5865f2", "#f26522", "#1f9d7a", "#f0b232", "#e84d4d", "#8e5bdc", "#2ecc71", "#3498db"]
+        return palette[sum % palette.length]
+    }
+
+    function avatarInitial(name) {
+        var value = String(name || "?").trim()
+        if (value.length === 0) return "?"
+
+        for (var i = 0; i < value.length; ++i) {
+            var ch = value.charAt(i)
+            if (ch !== " " && ch !== "\t" && ch !== "\n" && ch !== "\r") {
+                return ch.toUpperCase()
+            }
+        }
+
+        return value.charAt(0).toUpperCase()
+    }
+
+    function avatarImageSource(url) {
+        return url && String(url).trim().length > 0 ? String(url) : ""
+    }
+
+    // Nhãn cho vạch phân chia ngày, vd: "May 29, 2026" — giống style Discord trong ảnh mẫu.
+    function formatDateDivider(date) {
+        return Qt.formatDate(date, "MMMM d, yyyy")
+    }
+
+    function showUserProfile(userId, username, avatarUrl, displayName, bio) {
+        profileTargetUserId = userId
+        profileTargetUsername = username || ""
+        profileTargetDisplayName = displayName || username || ""
+        profileTargetAvatar = avatarUrl || ""
+        profileTargetBio = bio || ""
+        if (userId > 0) chatClient.requestUserProfile(userId)
+        profilePopup.open()
+        profilePopup.x = Math.max(12, (root.width - profilePopup.width) / 2)
+        profilePopup.y = Math.max(12, (root.height - profilePopup.height) / 2)
+    }
+
+    function openSettings() {
+        settingsDisplayName = currentUserDisplayName
+        settingsBio = currentUserBio
+        settingsAvatarUrl = currentUserAvatar
+        settingsDialog.open()
+    }
+
+    function saveProfile() {
+        chatClient.updateProfile(settingsDisplayName, settingsBio)
+        settingsDialog.close()
+    }
+
     function selectServer(idx) {
         currentServerIndex = idx
         currentChannelId = 0
@@ -51,8 +120,12 @@ Item {
     // Reset trạng thái khi đăng xuất (visible = false).
     onVisibleChanged: {
         if (!visible) {
-            currentChannelId = 0
             currentServerIndex = 0
+            currentChannelId = 0
+            replyingToId = 0
+            replyingToName = ""
+            editingId = 0
+            pendingAttachments = []
         }
     }
 
@@ -71,26 +144,46 @@ Item {
         anchors.fill: parent
         spacing: 0
 
-        // ── Cột 1: dãy server ──────────────────────────────────
+        ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+        // ── Cột 1: dãy server ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+        ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
         Rectangle {
             Layout.fillHeight: true
             Layout.preferredWidth: 68
             color: Theme.serverBar
 
-            Column {
-                anchors.top: parent.top
+            ColumnLayout {
+                anchors.fill: parent
+                anchors.topMargin: 12
+                anchors.bottomMargin: 12
                 anchors.horizontalCenter: parent.horizontalCenter
-                topPadding: 10
-                spacing: 10
+                spacing: 8
 
+                /* =========================== GHI ĐÈ MÀU TÍM LÊN AVATAR SERVER ===============
                 Repeater {
                     model: root.servers
-                    Rectangle {
-                        width: 48; height: 48; radius: 24
-                        color: index === root.currentServerIndex ? Theme.accent : Theme.inputBg
+                    delegate: Rectangle {
+                        Layout.preferredWidth: 48
+                        Layout.preferredHeight: 48
+                        Layout.alignment: Qt.AlignHCenter
+                        width: 48
+                        height: 48
+                        radius: 24
+                        color: index === root.currentServerIndex
+                               ? Theme.accent
+                               : root.avatarColorForName(modelData.name)
                         Label {
                             anchors.centerIn: parent
-                            text: modelData.name.length > 0 ? modelData.name.charAt(0).toUpperCase() : "?"
+                            visible: !(modelData.name && modelData.name.length > 0)
+                            text: "?"
+                            color: Theme.textPrimary
+                            font.bold: true
+                            font.pixelSize: 18
+                        }
+                        Label {
+                            anchors.centerIn: parent
+                            visible: modelData.name && modelData.name.length > 0
+                            text: root.avatarInitial(modelData.name)
                             color: Theme.textPrimary
                             font.bold: true
                             font.pixelSize: 18
@@ -102,9 +195,89 @@ Item {
                         }
                     }
                 }
+                ================================================================= */
 
-                // Nút thêm server
+                Repeater {
+                    model: root.servers
+                    delegate: Item {
+                        Layout.preferredWidth: 56
+                        Layout.preferredHeight: 56
+                        Layout.alignment: Qt.AlignHCenter
+                        width: 56
+                        height: 56
+
+                        // Glow khi được chọn
+                        Rectangle {
+                            anchors.centerIn: parent
+                            width: 56
+                            height: 56
+                            radius: 28
+                            visible: index === root.currentServerIndex
+                            color: "transparent"
+                            border.color: "#FFB347"
+                            border.width: 2
+                            opacity: 0.9
+                        }
+                        Rectangle {
+                            anchors.centerIn: parent
+                            width: 60
+                            height: 60
+                            radius: 30
+                            visible: index === root.currentServerIndex
+                            color: "transparent"
+                            border.color: "#FFB347"
+                            border.width: 1.5
+                            opacity: 0.5
+                        }
+                        Rectangle {
+                            anchors.centerIn: parent
+                            width: 64
+                            height: 64
+                            radius: 32
+                            visible: index === root.currentServerIndex
+                            color: "transparent"
+                            border.color: "#FFB347"
+                            border.width: 1
+                            opacity: 0.2
+                        }
+
+                        // Icon server
+                        Rectangle {
+                            anchors.centerIn: parent
+                            width: 48
+                            height: 48
+                            radius: 24
+                            color: root.avatarColorForName(modelData.name)
+                            Label {
+                                anchors.centerIn: parent
+                                visible: !(modelData.name && modelData.name.length > 0)
+                                text: "?"
+                                color: Theme.textPrimary
+                                font.bold: true
+                                font.pixelSize: 18
+                            }
+                            Label {
+                                anchors.centerIn: parent
+                                visible: modelData.name && modelData.name.length > 0
+                                text: root.avatarInitial(modelData.name)
+                                color: Theme.textPrimary
+                                font.bold: true
+                                font.pixelSize: 18
+                            }
+                            MouseArea {
+                                anchors.fill: parent
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: root.selectServer(index)
+                            }
+                        }
+                    }
+                }
+
+                // Nút thêm server — ngay dưới server cuối cùng
                 Rectangle {
+                    Layout.preferredWidth: 48
+                    Layout.preferredHeight: 48
+                    Layout.alignment: Qt.AlignHCenter
                     width: 48; height: 48; radius: 24
                     color: Theme.inputBg
                     Label {
@@ -117,10 +290,43 @@ Item {
                         onClicked: addServerDialog.open()
                     }
                 }
+
+                Item { Layout.fillHeight: true }
+
+                Rectangle {
+                    id: userAvatarContainer
+                    Layout.preferredWidth: 48
+                    Layout.preferredHeight: 48
+                    Layout.alignment: Qt.AlignHCenter
+                    Layout.fillWidth: false
+                    width: 48; height: 48; radius: 24
+                    color: root.avatarColorForName(root.currentUserDisplayName)
+                    layer.enabled: true
+                    Label {
+                        anchors.centerIn: parent
+                        visible: !(root.currentUserAvatar && root.currentUserAvatar.length > 0)
+                        text: root.avatarInitial(root.currentUserDisplayName || root.userId)
+                        color: Theme.textPrimary; font.bold: true; font.pixelSize: 18
+                    }
+                    Image {
+                        anchors.fill: parent
+                        visible: root.currentUserAvatar && root.currentUserAvatar.length > 0
+                        source: root.avatarImageSource(root.currentUserAvatar)
+                        fillMode: Image.PreserveAspectCrop
+                        asynchronous: true; cache: true
+                    }
+                    MouseArea {
+                        anchors.fill: parent
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: root.openSettings()
+                    }
+                }
             }
         }
 
-        // ── Cột 2: danh sách channel ───────────────────────────
+        ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+        // ── Cột 2: danh sách channel ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+        ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
         Rectangle {
             Layout.fillHeight: true
             Layout.preferredWidth: 190
@@ -160,7 +366,8 @@ Item {
                         color: modelData.id === root.currentChannelId ? Theme.accent : "transparent"
                         Label {
                             anchors.verticalCenter: parent.verticalCenter
-                            leftPadding: 8
+                            anchors.left: parent.left
+                            anchors.leftMargin: 8
                             text: "# " + modelData.name
                             color: Theme.textPrimary
                         }
@@ -174,7 +381,10 @@ Item {
             }
         }
 
-        // ── Cột 3: tin nhắn + ô soạn ───────────────────────────
+
+        ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+        // ── Cột 3: tin nhắn + ô soạn /////////////////////////////////////////////////////////////////////////////////////////
+        ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
         ColumnLayout {
             Layout.fillWidth: true
             Layout.fillHeight: true
@@ -186,7 +396,7 @@ Item {
                 Layout.fillWidth: true
                 Layout.fillHeight: true
                 clip: true
-                spacing: 8
+                spacing: 2
                 model: messageModel
 
                 // Không nảy khi cuộn tới biên.
@@ -207,7 +417,6 @@ Item {
                 delegate: Item {
                     id: msgItem
                     width: ListView.view ? ListView.view.width : 0
-                    implicitHeight: Math.max(msgCol.implicitHeight, 32)
 
                     // Lưu lại giá trị từ model (Popup nằm ở overlay nên không
                     // truy cập được "model" trực tiếp bên trong).
@@ -216,136 +425,277 @@ Item {
                     property string mUser:        model.username
                     property string mContent:     model.content
                     property var    mAttachments: model.attachments
+                    property string mAvatar:      model.avatarUrl
+
+                    // Tin nhắn đầu tiên của một ngày mới → hiện vạch phân chia ngày.
+                    property bool isNewDay: {
+                        if (index <= 0) return true
+                        var prevTs = messageModel.data(messageModel.index(index - 1, 0), 259)
+                        if (prevTs === undefined || prevTs === null) return true
+                        var cur  = new Date(model.timestamp * 1000)
+                        var prev = new Date(prevTs * 1000)
+                        return cur.getFullYear() !== prev.getFullYear()
+                            || cur.getMonth()    !== prev.getMonth()
+                            || cur.getDate()     !== prev.getDate()
+                    }
+                    property real dividerHeight: isNewDay ? 32 : 0
+
+                    // Discord-style: cùng author liên tiếp → ẩn avatar + username, giữ indent.
+                    property bool groupedWithPrevious: {
+                        if (isNewDay) return false
+                        if (index <= 0) return false
+                        var prev = messageModel.index(index - 1, 0)
+                        if (!prev.valid) return false
+                        return messageModel.data(prev, 260) === model.authorId
+                    }
+                    property bool mGrouped: groupedWithPrevious
+                    property real groupLeadGap: groupedWithPrevious ? 0 : 6
+                    height: dividerHeight + groupLeadGap + msgCol.implicitHeight
 
                     HoverHandler { id: msgHover }
 
-                    Column {
-                        id: msgCol
-                        width: parent.width
-                        spacing: 1
+                    // ── Vạch phân chia ngày (vd: "Today" / "May 29, 2026") ──
+                    Item {
+                        id: dateDivider
+                        visible: msgItem.isNewDay
+                        anchors.top: parent.top
+                        anchors.left: parent.left
+                        anchors.right: parent.right
+                        height: msgItem.dividerHeight
 
-                        // Trích dẫn tin được trả lời
-                        Label {
-                            visible: model.replyToId !== 0
-                            leftPadding: 8
-                            width: parent.width
-                            text: "↪ " + model.replyUsername + ": " + model.replyExcerpt
+                        Rectangle {
+                            anchors.verticalCenter: parent.verticalCenter
+                            anchors.left: parent.left
+                            anchors.right: parent.right
+                            height: 1
                             color: Theme.textMuted
-                            font.pixelSize: Theme.fontSmall
-                            elide: Text.ElideRight
-                        }
-                        Label {
-                            leftPadding: 8
-                            text: (model.username && model.username.length ? model.username : "?")
-                            color: Theme.accent
-                            font.bold: true
-                            font.pixelSize: Theme.fontSmall
-                        }
-                        Label {
-                            leftPadding: 8
-                            rightPadding: 8
-                            width: parent.width
-                            textFormat: Text.RichText
-                            color: Theme.textPrimary
-                            wrapMode: Text.WordWrap
-                            text: model.deleted
-                                  ? "<i><span style='color:#b5bac1;'>" + qsTr("[message deleted]") + "</span></i>"
-                                  : root.escapeHtml(model.content)
-                                    + (model.edited
-                                       ? " <span style='color:#b5bac1; font-size:11px;'>" + qsTr("(edited)") + "</span>"
-                                       : "")
+                            opacity: 0.25
                         }
 
-                        // Đính kèm (ảnh/gif hiển thị inline, file khác là thẻ)
-                        Column {
-                            leftPadding: 8
-                            spacing: 4
-                            visible: !model.deleted && model.attachments && model.attachments.length > 0
-                            Repeater {
-                                model: msgItem.mAttachments
-                                Loader {
-                                    sourceComponent: (modelData.kind === "image" || modelData.kind === "gif")
-                                                     ? imageAtt : fileAtt
-                                    property var att: modelData
+                        Rectangle {
+                            anchors.centerIn: parent
+                            color: Theme.background
+                            radius: 4
+                            height: dateLabel.implicitHeight + 4
+                            width: dateLabel.implicitWidth + 16
 
-                                    Component {
-                                        id: imageAtt
-                                        Image {
-                                            source: att.url
-                                            asynchronous: true
-                                            fillMode: Image.PreserveAspectFit
-                                            sourceSize.width: 320
-                                            width: Math.min(implicitWidth, 320)
-                                            MouseArea {
-                                                anchors.fill: parent
-                                                cursorShape: Qt.PointingHandCursor
-                                                onClicked: Qt.openUrlExternally(att.url)
-                                            }
-                                        }
-                                    }
-                                    Component {
-                                        id: fileAtt
-                                        Rectangle {
-                                            width: 240; height: 40; radius: 6
-                                            color: Theme.inputBg
-                                            Row {
-                                                anchors.fill: parent
-                                                anchors.leftMargin: 10
-                                                spacing: 8
-                                                Label { text: "📎"; anchors.verticalCenter: parent.verticalCenter }
-                                                Label {
-                                                    text: att.filename
-                                                    color: Theme.textPrimary
-                                                    elide: Text.ElideRight
-                                                    width: 180
-                                                    anchors.verticalCenter: parent.verticalCenter
-                                                }
-                                            }
-                                            MouseArea {
-                                                anchors.fill: parent
-                                                cursorShape: Qt.PointingHandCursor
-                                                onClicked: Qt.openUrlExternally(att.url)
-                                            }
-                                        }
-                                    }
-                                }
+                            Label {
+                                id: dateLabel
+                                anchors.centerIn: parent
+                                text: root.formatDateDivider(new Date(model.timestamp * 1000))
+                                color: Theme.textMuted
+                                font.bold: true
+                                font.pixelSize: Theme.fontSmall
                             }
                         }
+                    }
 
-                        // Chip reaction
-                        Flow {
-                            id: reactionFlow
-                            leftPadding: 8
-                            width: parent.width
-                            spacing: 4
-                            property var reactionsData: model.reactions
-                            property int msgId: model.messageId
-                            visible: reactionsData && reactionsData.length > 0
+                    Rectangle {
+                        id: avatarBubble
+                        anchors.top: parent.top
+                        anchors.topMargin: msgItem.dividerHeight + groupLeadGap
+                        anchors.left: parent.left
+                        width: 32
+                        height: 32
+                        radius: 16
+                        clip: true
+                        opacity: groupedWithPrevious ? 0 : 1
+                        color: root.avatarColorForName(msgItem.mUser || "?")
 
-                            Repeater {
-                                model: reactionFlow.reactionsData
-                                Rectangle {
-                                    height: 22
-                                    width: chipRow.implicitWidth + 14
-                                    radius: 11
-                                    color: Theme.inputBg
+                        Label {
+                            anchors.centerIn: parent
+                            visible: !(msgItem.mAvatar && msgItem.mAvatar.length > 0)
+                            text: root.avatarInitial(msgItem.mUser)
+                            color: Theme.textPrimary
+                            font.bold: true
+                            font.pixelSize: 14
+                        }
 
-                                    Row {
-                                        id: chipRow
-                                        anchors.centerIn: parent
-                                        spacing: 4
-                                        Label { text: modelData.emoji; font.pixelSize: 13 }
-                                        Label { text: modelData.count; color: Theme.textMuted; font.pixelSize: 12 }
-                                    }
-                                    MouseArea {
-                                        anchors.fill: parent
-                                        cursorShape: Qt.PointingHandCursor
-                                        onClicked: chatClient.toggleReaction(reactionFlow.msgId, modelData.emoji)
-                                    }
+                        Image {
+                            anchors.fill: parent
+                            visible: msgItem.mAvatar && msgItem.mAvatar.length > 0
+                            source: msgItem.mAvatar && msgItem.mAvatar.length > 0
+                                    ? root.avatarImageSource(msgItem.mAvatar)
+                                    : ""
+                            fillMode: Image.PreserveAspectCrop
+                            asynchronous: true
+                            cache: true
+                        }
+
+                        MouseArea {
+                            anchors.fill: parent
+                            enabled: !groupedWithPrevious
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: {
+                                if (msgItem.mAuthor === root.userId) {
+                                    root.openSettings()
+                                } else {
+                                    root.showUserProfile(msgItem.mAuthor, msgItem.mUser,
+                                                        msgItem.mAvatar, msgItem.mUser, "")
                                 }
                             }
                         }
                     }
+
+                    Column {
+                        id: msgCol
+                        anchors.top: parent.top
+                        anchors.topMargin: msgItem.dividerHeight + groupLeadGap
+                        anchors.left: avatarBubble.right
+                        anchors.leftMargin: 8
+                        anchors.right: parent.right
+                        spacing: 1
+
+                            // Trích dẫn tin được trả lời
+                            Label {
+                                visible: model.replyToId !== 0
+                                anchors.left: parent.left
+                                anchors.leftMargin: 8
+                                width: parent.width
+                                text: "↪ " + model.replyUsername + ": " + model.replyExcerpt
+                                color: Theme.textMuted
+                                font.pixelSize: Theme.fontSmall
+                                elide: Text.ElideRight
+                            }
+                            Row {
+                                anchors.left: parent.left
+                                anchors.leftMargin: 8
+                                spacing: 6
+                                visible: !msgItem.mGrouped
+                                Label {
+                                    id: usernameLabel
+                                    text: (model.username && model.username.length ? model.username : "?")
+                                    color: Theme.accent
+                                    font.bold: true
+                                    font.pixelSize: 12
+                                }
+                                Label {
+                                    visible: !msgItem.mGrouped
+                                    text: Qt.formatTime(new Date(model.timestamp * 1000), "hh:mm AP")
+                                    color: Theme.textMuted
+                                    font.pixelSize: 11
+                                }
+                            }
+                            Label {
+                                anchors.left: parent.left
+                                anchors.right: parent.right
+                                anchors.leftMargin: 8
+                                anchors.rightMargin: 8
+                                width: parent.width
+                                textFormat: Text.RichText
+                                color: Theme.textPrimary
+                                wrapMode: Text.WordWrap
+                                text: model.deleted
+                                      ? "<i><span style='color:#b5bac1;'>" + qsTr("[message deleted]") + "</span></i>"
+                                      : root.escapeHtml(model.content)
+                                        + (model.edited
+                                           ? " <span style='color:#b5bac1; font-size:11px;'>" + qsTr("(edited)") + "</span>"
+                                           : "")
+                            }
+
+                            // Đính kèm (ảnh/gif hiển thị inline, file khác là thẻ)
+                            Column {
+                                anchors.left: parent.left
+                                anchors.leftMargin: 8
+                                spacing: 4
+                                visible: !model.deleted && model.attachments && model.attachments.length > 0
+                                Repeater {
+                                    model: msgItem.mAttachments
+                                    Loader {
+                                        sourceComponent: (modelData.kind === "image" || modelData.kind === "gif")
+                                                         ? imageAtt : fileAtt
+                                        property var att: modelData
+
+                                        Component {
+                                            id: imageAtt
+                                            Rectangle {
+                                                radius: 10
+                                                clip: true
+                                                color: "transparent"
+                                                width: img.width
+                                                height: img.height
+
+                                                Image {
+                                                    id: img
+                                                    source: att.url
+                                                    asynchronous: true
+                                                    fillMode: Image.PreserveAspectFit
+                                                    sourceSize.width: 320
+                                                    width: Math.min(implicitWidth > 0 ? implicitWidth : sourceSize.width, 320)
+                                                }
+
+                                                MouseArea {
+                                                    anchors.fill: parent
+                                                    cursorShape: Qt.PointingHandCursor
+                                                    onClicked: Qt.openUrlExternally(att.url)
+                                                }
+                                            }
+                                        }
+                                        
+                                        Component {
+                                            id: fileAtt
+                                            Rectangle {
+                                                width: 240; height: 40; radius: 6
+                                                color: Theme.inputBg
+                                                Row {
+                                                    anchors.fill: parent
+                                                    anchors.leftMargin: 10
+                                                    spacing: 8
+                                                    Label { text: "📎"; anchors.verticalCenter: parent.verticalCenter }
+                                                    Label {
+                                                        text: att.filename
+                                                        color: Theme.textPrimary
+                                                        elide: Text.ElideRight
+                                                        width: 180
+                                                        anchors.verticalCenter: parent.verticalCenter
+                                                    }
+                                                }
+                                                MouseArea {
+                                                    anchors.fill: parent
+                                                    cursorShape: Qt.PointingHandCursor
+                                                    onClicked: Qt.openUrlExternally(att.url)
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+
+                            // Chip reaction
+                            Flow {
+                                id: reactionFlow
+                                anchors.left: parent.left
+                                anchors.leftMargin: 8
+                                width: parent.width
+                                spacing: 4
+                                property var reactionsData: model.reactions
+                                property int msgId: model.messageId
+                                visible: reactionsData && reactionsData.length > 0
+
+                                Repeater {
+                                    model: reactionFlow.reactionsData
+                                    Rectangle {
+                                        height: 22
+                                        width: chipRow.implicitWidth + 14
+                                        radius: 11
+                                        color: Theme.inputBg
+
+                                        Row {
+                                            id: chipRow
+                                            anchors.centerIn: parent
+                                            spacing: 4
+                                            Label { text: modelData.emoji; font.pixelSize: 13 }
+                                            Label { text: modelData.count; color: Theme.textMuted; font.pixelSize: 12 }
+                                        }
+                                        MouseArea {
+                                            anchors.fill: parent
+                                            cursorShape: Qt.PointingHandCursor
+                                            onClicked: chatClient.toggleReaction(reactionFlow.msgId, modelData.emoji)
+                                        }
+                                    }
+                                }
+                            }
+                        }
 
                     // Nút ⋯ tròn (hiện khi rê chuột) → menu hành động icon-only
                     Rectangle {
@@ -380,7 +730,6 @@ Item {
                             width: 212
                             x: moreBtn.width - width
                             y: moreBtn.height + 2
-                            padding: 6
                             onAboutToShow: {
                                 var topInList = moreBtn.mapToItem(list, 0, 0).y
                                 var spaceBelow = list.height - topInList
@@ -555,7 +904,6 @@ Item {
                         id: reactPopup
                         property int msgId: msgItem.mId
                         width: 280
-                        padding: 6
                         modal: false
                         // Canh phải; tự lật lên trên nếu không đủ chỗ bên dưới.
                         x: parent.width - width - 8
@@ -756,7 +1104,6 @@ Item {
                             Popup {
                                 id: emojiPopup
                                 width: 336
-                                padding: 8
                                 modal: false
                                 x: emojiIcon.width - width
                                 y: -height - 8
@@ -837,13 +1184,187 @@ Item {
     // Sự kiện upload từ ChatClient
     Connections {
         target: chatClient
+        function onAuthOk(userId, username, displayName, avatarUrl, bio) {
+            root.userId = userId
+            root.currentUserDisplayName = displayName || username || ""
+            root.currentUserAvatar = avatarUrl || ""
+            root.currentUserBio = bio || ""
+            root.settingsDisplayName = root.currentUserDisplayName
+            root.settingsAvatarUrl = root.currentUserAvatar
+            root.settingsBio = root.currentUserBio
+        }
+        function onProfileUpdated(avatarUrl, displayName, bio) {
+            root.currentUserAvatar = avatarUrl || ""
+            root.currentUserDisplayName = displayName || root.currentUserDisplayName
+            root.currentUserBio = bio || ""
+            root.settingsAvatarUrl = root.currentUserAvatar
+            root.settingsDisplayName = root.currentUserDisplayName
+            root.settingsBio = root.currentUserBio
+        }
+        function onUserProfileReceived(userId, username, displayName, avatarUrl, bio) {
+            if (root.profileTargetUserId === userId) {
+                root.profileTargetUsername = username || root.profileTargetUsername
+                root.profileTargetDisplayName = displayName || root.profileTargetDisplayName
+                root.profileTargetAvatar = avatarUrl || root.profileTargetAvatar
+                root.profileTargetBio = bio || root.profileTargetBio
+            }
+        }
         function onAttachmentUploaded(url, kind, filename, size) {
+            if (root.avatarUploadPending) {
+                root.avatarUploadPending = false
+                root.settingsAvatarUrl = url
+                root.currentUserAvatar = url
+                chatClient.updateProfileAvatar(url)
+                return
+            }
             root.pendingAttachments = root.pendingAttachments.concat([
                 { "url": url, "kind": kind, "filename": filename, "size": size }
             ])
         }
         function onUploadFailed(reason) {
+            root.avatarUploadPending = false
             console.log("Upload failed: " + reason)
+        }
+    }
+
+    Popup {
+        id: profilePopup
+        width: 280
+        modal: false
+        background: Rectangle {
+            color: Theme.surface
+            radius: Theme.radius
+            border.color: Theme.inputBg
+        }
+        contentItem: Item {
+            implicitWidth: 280
+            implicitHeight: 180
+            ColumnLayout {
+                anchors.fill: parent
+                anchors.margins: 12
+                spacing: 10
+                Rectangle {
+                    id: profileAvatarContainer
+                    Layout.alignment: Qt.AlignHCenter
+                    width: 64; height: 64; radius: 32
+                    color: root.avatarColorForName(root.profileTargetDisplayName || root.profileTargetUsername || "?")
+                    layer.enabled: true
+                    Label {
+                        anchors.centerIn: parent
+                        visible: !(root.profileTargetAvatar && root.profileTargetAvatar.length > 0)
+                        text: root.avatarInitial(root.profileTargetDisplayName || root.profileTargetUsername)
+                        color: Theme.textPrimary; font.bold: true; font.pixelSize: 24
+                    }
+                    Image {
+                        anchors.fill: parent
+                        visible: root.profileTargetAvatar && root.profileTargetAvatar.length > 0
+                        source: root.avatarImageSource(root.profileTargetAvatar)
+                        fillMode: Image.PreserveAspectCrop
+                        asynchronous: true; cache: true
+                    }
+                }
+                Label {
+                    text: root.profileTargetDisplayName || root.profileTargetUsername || qsTr("User")
+                    color: Theme.textPrimary
+                    font.bold: true
+                    font.pixelSize: Theme.fontNormal
+                }
+                Label {
+                    text: root.profileTargetUsername ? "@" + root.profileTargetUsername : ""
+                    color: Theme.textMuted
+                    font.pixelSize: Theme.fontSmall
+                }
+                Label {
+                    visible: root.profileTargetBio && root.profileTargetBio.length > 0
+                    text: root.profileTargetBio
+                    width: parent.width
+                    wrapMode: Text.WordWrap
+                    color: Theme.textPrimary
+                    font.pixelSize: Theme.fontSmall
+                }
+            }
+        }
+    }
+
+    Dialog {
+        id: settingsDialog
+        title: qsTr("Profile settings")
+        anchors.centerIn: parent
+        modal: true
+        width: 360
+        standardButtons: Dialog.Cancel | Dialog.Ok
+        onAccepted: root.saveProfile()
+        contentItem: Item {
+            implicitWidth: 360
+            implicitHeight: 340
+            ColumnLayout {
+                anchors.fill: parent
+                anchors.margins: 12
+                spacing: 10
+                Rectangle {
+                    id: settingsAvatarContainer
+                    Layout.alignment: Qt.AlignHCenter
+                    width: 72; height: 72; radius: 36
+                    color: root.avatarColorForName(root.settingsDisplayName || root.currentUserDisplayName || "?")
+                    layer.enabled: true
+                    Label {
+                        anchors.centerIn: parent
+                        visible: !(root.settingsAvatarUrl && root.settingsAvatarUrl.length > 0)
+                        text: root.avatarInitial(root.settingsDisplayName || root.currentUserDisplayName)
+                        color: Theme.textPrimary; font.bold: true; font.pixelSize: 28
+                    }
+                    Image {
+                        anchors.fill: parent
+                        visible: root.settingsAvatarUrl && root.settingsAvatarUrl.length > 0
+                        source: root.avatarImageSource(root.settingsAvatarUrl)
+                        fillMode: Image.PreserveAspectCrop
+                        asynchronous: true; cache: true
+                    }
+                }
+                Button {
+                    text: qsTr("Change avatar")
+                    Layout.fillWidth: true
+                    onClicked: {
+                        var p = chatClient.chooseFile()
+                        if (p && p.length > 0) {
+                            root.avatarUploadPending = true
+                            chatClient.uploadAttachment(p)
+                        }
+                    }
+                }
+                TextField {
+                    id: profileDisplayName
+                    Layout.fillWidth: true
+                    text: root.settingsDisplayName
+                    placeholderText: qsTr("Display name")
+                    onTextChanged: root.settingsDisplayName = text
+                }
+
+                /* =====================Lỗi không lướt xuống đc trong userprofile=================================== 
+                TextArea {
+                    id: profileBio
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: 90
+                    wrapMode: TextEdit.Wrap
+                    text: root.settingsBio
+                    placeholderText: qsTr("Bio")
+                    onTextChanged: root.settingsBio = text
+                }
+                ========================================================== */
+
+                ScrollView {
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: 90
+                    TextArea {
+                        id: profileBio
+                        width: parent.width
+                        wrapMode: TextEdit.Wrap
+                        text: root.settingsBio
+                        placeholderText: qsTr("Bio")
+                        onTextChanged: root.settingsBio = text
+                    }
+                }
+            }
         }
     }
 
@@ -854,7 +1375,6 @@ Item {
         anchors.centerIn: parent
         modal: true
         width: 340
-        padding: 16
         standardButtons: Dialog.Close
 
         contentItem: ColumnLayout {
@@ -914,8 +1434,8 @@ Item {
         anchors.centerIn: parent
         modal: true
         width: 340
-        padding: 16
         standardButtons: Dialog.Cancel | Dialog.Ok
+
         onAccepted: {
             if (newChannelName.text.trim().length > 0 && root.currentServerId !== 0) {
                 chatClient.createChannel(root.currentServerId, newChannelName.text.trim())

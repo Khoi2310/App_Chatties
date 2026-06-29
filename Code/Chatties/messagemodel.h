@@ -21,7 +21,8 @@ public:
         EditedRole,
         DeletedRole,
         ReactionsRole,
-        AttachmentsRole
+        AttachmentsRole,
+        AvatarUrlRole
     };
 
     struct Item {
@@ -37,6 +38,7 @@ public:
         bool    deleted   = false;
         QVariantList reactions;    // [{emoji, count}]
         QVariantList attachments;  // [{url, kind, filename, size}]
+        QString avatarUrl;
     };
 
     explicit MessageModel(QObject* parent = nullptr);

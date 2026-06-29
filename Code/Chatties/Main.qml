@@ -33,7 +33,7 @@ ApplicationWindow {
 
     Connections {
         target: chatClient
-        function onAuthOk(userId, username, displayName) {
+        function onAuthOk(userId, username, displayName, avatarUrl, bio) {
             window.userId = userId
             window.loggedIn = true
         }

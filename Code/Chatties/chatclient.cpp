@@ -154,6 +154,25 @@ void ChatClient::uploadAttachment(const QString& localPathOrUrl) {
     });
 }
 
+void ChatClient::updateProfileAvatar(const QString& avatarUrl) {
+    QJsonObject data;
+    data["avatar_url"] = avatarUrl;
+    sendOp("profile.update", data);
+}
+
+void ChatClient::updateProfile(const QString& displayName, const QString& bio) {
+    QJsonObject data;
+    data["display_name"] = displayName;
+    data["bio"] = bio;
+    sendOp("profile.update", data);
+}
+
+void ChatClient::requestUserProfile(int userId) {
+    QJsonObject data;
+    data["user_id"] = userId;
+    sendOp("user.profile", data);
+}
+
 void ChatClient::editMessage(int messageId, const QString& content) {
     QJsonObject data;
     data["message_id"] = messageId;
@@ -229,7 +248,9 @@ void ChatClient::onReadyRead() {
         if (op == "auth.ok") {
             emit authOk(data["user_id"].toInt(),
                         data["username"].toString(),
-                        data["display_name"].toString());
+                        data["display_name"].toString(),
+                        data["avatar_url"].toString(),
+                        data["bio"].toString());
         } else if (op == "auth.error") {
             emit authError(data["reason"].toString());
         } else if (op == "ready") {
@@ -256,6 +277,16 @@ void ChatClient::onReadyRead() {
                 list.append(m);
             }
             emit reactionUpdated(data["message_id"].toInt(), list);
+        } else if (op == "profile.ok") {
+            emit profileUpdated(data["avatar_url"].toString(),
+                                data["display_name"].toString(),
+                                data["bio"].toString());
+        } else if (op == "user.profile") {
+            emit userProfileReceived(data["user_id"].toInt(),
+                                     data["username"].toString(),
+                                     data["display_name"].toString(),
+                                     data["avatar_url"].toString(),
+                                     data["bio"].toString());
         } else if (op == "error") {
             emit errorReceived(data["reason"].toString());
         }
