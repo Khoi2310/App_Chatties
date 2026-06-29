@@ -217,14 +217,19 @@ bool Database::reply_preview(uint32_t message_id,
                              std::string& out_username,
                              std::string& out_excerpt) {
     SQLite::Statement q(db_,
-        "SELECT u.username, m.content, m.deleted FROM messages m "
-        "JOIN users u ON u.id = m.author_id WHERE m.id = ?");
+        "SELECT u.username, m.content, m.deleted, "
+        "       (SELECT COUNT(*) FROM attachments a WHERE a.message_id = m.id) "
+        "FROM messages m JOIN users u ON u.id = m.author_id WHERE m.id = ?");
     q.bind(1, message_id);
     if (q.executeStep()) {
         out_username = q.getColumn(0).getString();
-        out_excerpt  = (q.getColumn(2).getInt() != 0)
-            ? std::string("[deleted]")
-            : make_excerpt(q.getColumn(1).getString());
+        const bool deleted = q.getColumn(2).getInt() != 0;
+        const std::string content = q.getColumn(1).getString();
+        const int att_count = q.getColumn(3).getInt();
+        if (deleted)               out_excerpt = "[deleted]";
+        else if (!content.empty()) out_excerpt = make_excerpt(content);
+        else if (att_count > 0)    out_excerpt = "[attachment]";
+        else                       out_excerpt = "";
         return true;
     }
     return false;
@@ -273,7 +278,8 @@ std::vector<MessageRecord> Database::recent_messages(uint32_t channel_id, int li
     SQLite::Statement q(db_,
         "SELECT m.id, m.channel_id, m.author_id, u.username, m.content, m.created_at, "
         "       m.edited_at, m.deleted, "
-        "       m.reply_to_id, ru.username, rm.content, rm.deleted "
+        "       m.reply_to_id, ru.username, rm.content, rm.deleted, "
+        "       (SELECT COUNT(*) FROM attachments a WHERE a.message_id = rm.id) "
         "FROM messages m "
         "JOIN users u ON u.id = m.author_id "
         "LEFT JOIN messages rm ON rm.id = m.reply_to_id "
@@ -298,10 +304,13 @@ std::vector<MessageRecord> Database::recent_messages(uint32_t channel_id, int li
         rec.reply_to_id = q.getColumn(8).isNull() ? 0 : q.getColumn(8).getUInt();
         if (rec.reply_to_id != 0) {
             rec.reply_username = q.getColumn(9).getString();
-            bool reply_deleted = q.getColumn(11).getInt() != 0;
-            rec.reply_excerpt  = reply_deleted
-                ? std::string("[deleted]")
-                : make_excerpt(q.getColumn(10).getString());
+            const bool reply_deleted = q.getColumn(11).getInt() != 0;
+            const std::string reply_content = q.getColumn(10).getString();
+            const int reply_att = q.getColumn(12).getInt();
+            if (reply_deleted)               rec.reply_excerpt = "[deleted]";
+            else if (!reply_content.empty()) rec.reply_excerpt = make_excerpt(reply_content);
+            else if (reply_att > 0)          rec.reply_excerpt = "[attachment]";
+            else                             rec.reply_excerpt = "";
         }
         result.push_back(std::move(rec));
     }
