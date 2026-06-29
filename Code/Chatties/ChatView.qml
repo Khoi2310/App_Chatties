@@ -470,6 +470,7 @@ Item {
                         if (!prev.valid) return false
                         return messageModel.data(prev, 260) === model.authorId
                     }
+                    property bool mGrouped: groupedWithPrevious
                     property real groupLeadGap: groupedWithPrevious ? 0 : 6
                     height: groupLeadGap + msgCol.implicitHeight
 
@@ -536,15 +537,24 @@ Item {
                                 font.pixelSize: Theme.fontSmall
                                 elide: Text.ElideRight
                             }
-                            Label {
-                                id: usernameLabel
+                            Row {
                                 anchors.left: parent.left
                                 anchors.leftMargin: 8
-                                visible: !groupedWithPrevious
-                                text: (model.username && model.username.length ? model.username : "?")
-                                color: Theme.accent
-                                font.bold: true
-                                font.pixelSize: 12
+                                spacing: 6
+                                visible: !msgItem.mGrouped
+                                Label {
+                                    id: usernameLabel
+                                    text: (model.username && model.username.length ? model.username : "?")
+                                    color: Theme.accent
+                                    font.bold: true
+                                    font.pixelSize: 12
+                                }
+                                Label {
+                                    visible: !msgItem.mGrouped
+                                    text: Qt.formatTime(new Date(model.timestamp * 1000), "hh:mm AP")
+                                    color: Theme.textMuted
+                                    font.pixelSize: 11
+                                }
                             }
                             Label {
                                 anchors.left: parent.left
