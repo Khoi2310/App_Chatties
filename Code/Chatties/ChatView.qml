@@ -288,70 +288,28 @@ Item {
 
                 Item { Layout.fillHeight: true }
 
-                /* ======================= Lỗi avatar userprofile ko ép đc qua kiểu hình tròn =========================================
                 Rectangle {
+                    id: userAvatarContainer
                     Layout.preferredWidth: 48
                     Layout.preferredHeight: 48
                     Layout.alignment: Qt.AlignHCenter
                     Layout.fillWidth: false
-                    width: 48
-                    height: 48
-                    radius: width / 2
-                    color: Theme.inputBg
-                    clip: true
-                    Image {
-                        anchors.fill: parent
-                        visible: root.currentUserAvatar && root.currentUserAvatar.length > 0
-                        source: root.avatarImageSource(root.currentUserAvatar)
-                        fillMode: Image.PreserveAspectCrop
-                        asynchronous: true
-                        cache: true
-                    }
-                    Label {
-                        anchors.centerIn: parent
-                        visible: !(root.currentUserAvatar && root.currentUserAvatar.length > 0)
-                        text: root.avatarInitial(root.currentUserDisplayName || root.userId)
-                        color: Theme.textPrimary
-                        font.bold: true
-                        font.pixelSize: 18
-                    }
-                    MouseArea {
-                        anchors.fill: parent
-                        cursorShape: Qt.PointingHandCursor
-                        onClicked: root.openSettings()
-                    }
-                } 
-                ==================================================================== */
-
-                Rectangle {
-                    Layout.preferredWidth: 48
-                    Layout.preferredHeight: 48
-                    Layout.alignment: Qt.AlignHCenter
-                    Layout.fillWidth: false
-                    width: 48
-                    height: 48
-                    radius: 24
+                    width: 48; height: 48; radius: 24
                     color: root.avatarColorForName(root.currentUserDisplayName)
                     layer.enabled: true
-
                     Label {
                         anchors.centerIn: parent
                         visible: !(root.currentUserAvatar && root.currentUserAvatar.length > 0)
                         text: root.avatarInitial(root.currentUserDisplayName || root.userId)
-                        color: Theme.textPrimary
-                        font.bold: true
-                        font.pixelSize: 18
+                        color: Theme.textPrimary; font.bold: true; font.pixelSize: 18
                     }
-
                     Image {
                         anchors.fill: parent
                         visible: root.currentUserAvatar && root.currentUserAvatar.length > 0
                         source: root.avatarImageSource(root.currentUserAvatar)
                         fillMode: Image.PreserveAspectCrop
-                        asynchronous: true
-                        cache: true
+                        asynchronous: true; cache: true
                     }
-
                     MouseArea {
                         anchors.fill: parent
                         cursorShape: Qt.PointingHandCursor
@@ -483,18 +441,11 @@ Item {
                         anchors.left: parent.left
                         width: 32
                         height: 32
-                        radius: width / 2
+                        radius: 16
+                        clip: true
                         opacity: groupedWithPrevious ? 0 : 1
                         color: root.avatarColorForName(msgItem.mUser || "?")
-                        clip: true
-                        Image {
-                            anchors.fill: parent
-                            visible: msgItem.mAvatar && msgItem.mAvatar.length > 0
-                            source: root.avatarImageSource(msgItem.mAvatar)
-                            fillMode: Image.PreserveAspectCrop
-                            asynchronous: true
-                            cache: true
-                        }
+
                         Label {
                             anchors.centerIn: parent
                             visible: !(msgItem.mAvatar && msgItem.mAvatar.length > 0)
@@ -503,6 +454,18 @@ Item {
                             font.bold: true
                             font.pixelSize: 14
                         }
+
+                        Image {
+                            anchors.fill: parent
+                            visible: msgItem.mAvatar && msgItem.mAvatar.length > 0
+                            source: msgItem.mAvatar && msgItem.mAvatar.length > 0
+                                    ? root.avatarImageSource(msgItem.mAvatar)
+                                    : ""
+                            fillMode: Image.PreserveAspectCrop
+                            asynchronous: true
+                            cache: true
+                        }
+
                         MouseArea {
                             anchors.fill: parent
                             enabled: !groupedWithPrevious
@@ -511,7 +474,8 @@ Item {
                                 if (msgItem.mAuthor === root.userId) {
                                     root.openSettings()
                                 } else {
-                                    root.showUserProfile(msgItem.mAuthor, msgItem.mUser, msgItem.mAvatar, msgItem.mUser, "")
+                                    root.showUserProfile(msgItem.mAuthor, msgItem.mUser,
+                                                        msgItem.mAvatar, msgItem.mUser, "")
                                 }
                             }
                         }
@@ -1224,27 +1188,23 @@ Item {
                 anchors.margins: 12
                 spacing: 10
                 Rectangle {
+                    id: profileAvatarContainer
                     Layout.alignment: Qt.AlignHCenter
-                    width: 64
-                    height: 64
-                    radius: 32
+                    width: 64; height: 64; radius: 32
                     color: root.avatarColorForName(root.profileTargetDisplayName || root.profileTargetUsername || "?")
-                    clip: true
+                    layer.enabled: true
+                    Label {
+                        anchors.centerIn: parent
+                        visible: !(root.profileTargetAvatar && root.profileTargetAvatar.length > 0)
+                        text: root.avatarInitial(root.profileTargetDisplayName || root.profileTargetUsername)
+                        color: Theme.textPrimary; font.bold: true; font.pixelSize: 24
+                    }
                     Image {
                         anchors.fill: parent
                         visible: root.profileTargetAvatar && root.profileTargetAvatar.length > 0
                         source: root.avatarImageSource(root.profileTargetAvatar)
                         fillMode: Image.PreserveAspectCrop
-                        asynchronous: true
-                        cache: true
-                    }
-                    Label {
-                        anchors.centerIn: parent
-                        visible: !(root.profileTargetAvatar && root.profileTargetAvatar.length > 0)
-                        text: root.avatarInitial(root.profileTargetDisplayName || root.profileTargetUsername)
-                        color: Theme.textPrimary
-                        font.bold: true
-                        font.pixelSize: 24
+                        asynchronous: true; cache: true
                     }
                 }
                 Label {
@@ -1286,27 +1246,23 @@ Item {
                 anchors.margins: 12
                 spacing: 10
                 Rectangle {
+                    id: settingsAvatarContainer
                     Layout.alignment: Qt.AlignHCenter
-                    width: 72
-                    height: 72
-                    radius: 36
+                    width: 72; height: 72; radius: 36
                     color: root.avatarColorForName(root.settingsDisplayName || root.currentUserDisplayName || "?")
-                    clip: true
+                    layer.enabled: true
+                    Label {
+                        anchors.centerIn: parent
+                        visible: !(root.settingsAvatarUrl && root.settingsAvatarUrl.length > 0)
+                        text: root.avatarInitial(root.settingsDisplayName || root.currentUserDisplayName)
+                        color: Theme.textPrimary; font.bold: true; font.pixelSize: 28
+                    }
                     Image {
                         anchors.fill: parent
                         visible: root.settingsAvatarUrl && root.settingsAvatarUrl.length > 0
                         source: root.avatarImageSource(root.settingsAvatarUrl)
                         fillMode: Image.PreserveAspectCrop
-                        asynchronous: true
-                        cache: true
-                    }
-                    Label {
-                        anchors.centerIn: parent
-                        visible: !(root.settingsAvatarUrl && root.settingsAvatarUrl.length > 0)
-                        text: root.avatarInitial(root.settingsDisplayName || root.currentUserDisplayName)
-                        color: Theme.textPrimary
-                        font.bold: true
-                        font.pixelSize: 28
+                        asynchronous: true; cache: true
                     }
                 }
                 Button {
