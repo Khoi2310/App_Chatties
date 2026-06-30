@@ -193,6 +193,89 @@ void ChatClient::toggleReaction(int messageId, const QString& emoji) {
     sendOp("reaction.toggle", data);
 }
 
+void ChatClient::searchGifs(const QString& query) {
+    QString url = "http://127.0.0.1:8081/gif_search?q=" +
+                  QString::fromUtf8(QUrl::toPercentEncoding(query));
+    QNetworkReply* reply = netManager_->get(QNetworkRequest(QUrl(url)));
+    connect(reply, &QNetworkReply::finished, this, [this, reply]() {
+        reply->deleteLater();
+        if (reply->error() != QNetworkReply::NoError) return;
+        const QJsonArray arr = QJsonDocument::fromJson(reply->readAll()).array();
+        QVariantList list;
+        for (const auto& v : arr) {
+            const QJsonObject o = v.toObject();
+            QVariantMap m;
+            m["url"]     = o.value("url").toString();
+            m["preview"] = o.value("preview").toString();
+            m["width"]   = o.value("width").toInt();
+            m["height"]  = o.value("height").toInt();
+            list.append(m);
+        }
+        emit gifResults(list);
+    });
+}
+
+void ChatClient::fetchCustomEmojis(int serverId) {
+    QNetworkRequest req(QUrl("http://127.0.0.1:8081/emojis?server_id=" +
+                             QString::number(serverId)));
+    QNetworkReply* reply = netManager_->get(req);
+    connect(reply, &QNetworkReply::finished, this, [this, reply]() {
+        reply->deleteLater();
+        if (reply->error() != QNetworkReply::NoError) return;
+        const QJsonArray arr = QJsonDocument::fromJson(reply->readAll()).array();
+        QVariantList list;
+        for (const auto& v : arr) {
+            const QJsonObject o = v.toObject();
+            QVariantMap m;
+            m["shortcode"] = o.value("shortcode").toString();
+            m["url"]       = o.value("url").toString();
+            list.append(m);
+        }
+        emit customEmojisReceived(list);
+    });
+}
+
+void ChatClient::uploadCustomEmoji(int serverId, const QString& shortcode,
+                                   const QString& localPathOrUrl) {
+    QString path = localPathOrUrl;
+    if (path.startsWith("file:"))
+        path = QUrl(path).toLocalFile();
+
+    const qint64 MAX_EMOJI = 256 * 1024;   // 256 KB như Discord
+    if (QFileInfo(path).size() > MAX_EMOJI) {
+        emit uploadFailed(tr("Emoji too large (max 256 KB)"));
+        return;
+    }
+
+    QFile file(path);
+    if (!file.open(QIODevice::ReadOnly)) {
+        emit uploadFailed(tr("Cannot open file: ") + path);
+        return;
+    }
+    const QByteArray bytes = file.readAll();
+    file.close();
+
+    const QString suffix = QFileInfo(path).suffix().toLower();
+    QString contentType = "image/png";
+    if (suffix == "jpg" || suffix == "jpeg") contentType = "image/jpeg";
+    else if (suffix == "gif")                contentType = "image/gif";
+
+    QNetworkRequest req(QUrl("http://127.0.0.1:8081/upload_emoji"));
+    req.setHeader(QNetworkRequest::ContentTypeHeader, contentType);
+    req.setRawHeader("X-Emoji-Shortcode", shortcode.toUtf8());
+    req.setRawHeader("X-Server-Id", QByteArray::number(serverId));
+
+    QNetworkReply* reply = netManager_->post(req, bytes);
+    connect(reply, &QNetworkReply::finished, this, [this, reply, serverId]() {
+        reply->deleteLater();
+        if (reply->error() != QNetworkReply::NoError) {
+            emit uploadFailed(reply->errorString());
+            return;
+        }
+        fetchCustomEmojis(serverId);   // làm mới danh sách của server này
+    });
+}
+
 void ChatClient::createServer(const QString& name) {
     QJsonObject data;
     data["name"] = name;

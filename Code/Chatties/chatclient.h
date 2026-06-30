@@ -36,6 +36,14 @@ public:
     Q_INVOKABLE void deleteMessage(int messageId);
     Q_INVOKABLE void toggleReaction(int messageId, const QString& emoji);
 
+    // Tìm GIF qua server proxy (Giphy)
+    Q_INVOKABLE void searchGifs(const QString& query);
+
+    // Custom emoji theo từng server (qua HTTP media server)
+    Q_INVOKABLE void fetchCustomEmojis(int serverId);
+    Q_INVOKABLE void uploadCustomEmoji(int serverId, const QString& shortcode,
+                                       const QString& localPathOrUrl);
+
     // Server (guild) & channel
     Q_INVOKABLE void createServer(const QString& name);
     Q_INVOKABLE void joinServer(int serverId);
@@ -54,6 +62,8 @@ signals:
     void messageDeleted(int id);
     void reactionUpdated(int messageId, QVariantList reactions);
     void attachmentUploaded(QString url, QString kind, QString filename, int size);
+    void customEmojisReceived(QVariantList emojis);   // [{shortcode, url}]
+    void gifResults(QVariantList gifs);               // [{url, preview, width, height}]
     void profileUpdated(QString avatarUrl, QString displayName, QString bio);
     void userProfileReceived(int userId, QString username, QString displayName, QString avatarUrl, QString bio);
     void uploadFailed(QString reason);

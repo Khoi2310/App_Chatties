@@ -149,10 +149,11 @@ public:
     std::vector<AttachmentRecord> attachments_for(uint32_t message_id);
 
     // ─── Custom Emoji ──────────────────────────────────────────────
-    void add_custom_emoji(const std::string& shortcode, const std::string& image_url);
+    void add_custom_emoji(uint32_t server_id, const std::string& shortcode,
+                          const std::string& image_url);
 
-    // [MỚI BỔ SUNG] - Hàm quét toàn bộ Emoji
-    std::vector<CustomEmojiRecord> get_all_custom_emojis();
+    // Custom emoji của riêng 1 server.
+    std::vector<CustomEmojiRecord> emojis_for_server(uint32_t server_id);
 
 private:
     void run_migrations();

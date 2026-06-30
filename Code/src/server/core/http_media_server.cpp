@@ -4,6 +4,7 @@
 
 // CHỈ DEFINE Ở ĐÂY, không được define ở file nào khác
 #define CPPHTTPLIB_IMPLEMENTATION
+#define CPPHTTPLIB_OPENSSL_SUPPORT   // bật HTTPS client cho Giphy
 #include <httplib.h>
 
 #include <filesystem>
@@ -18,11 +19,13 @@ using chatties::utils::Logger;
 
 HttpMediaServer::HttpMediaServer(const std::string& host, int port,
                                  const std::string& storage_path,
-                                 chatties::server::db::Database& db)
+                                 chatties::server::db::Database& db,
+                                 const std::string& giphy_key)
     : m_host(host)
     , m_public_host(host == "0.0.0.0" ? "127.0.0.1" : host)
     , m_port(port)
     , m_storage_path(storage_path)
+    , m_giphy_key(giphy_key)
     , m_running(false)
     , m_db(db)
 {
@@ -56,6 +59,22 @@ std::string HttpMediaServer::extFromContentType(const std::string& ct) {
     return "";   // không nhận ra từ content-type
 }
 
+// URL-encode 1 tham số query.
+static std::string urlEncode(const std::string& s) {
+    static const char* hex = "0123456789ABCDEF";
+    std::string out;
+    for (unsigned char c : s) {
+        if (std::isalnum(c) || c == '-' || c == '_' || c == '.' || c == '~') {
+            out += static_cast<char>(c);
+        } else {
+            out += '%';
+            out += hex[c >> 4];
+            out += hex[c & 0x0F];
+        }
+    }
+    return out;
+}
+
 // Lấy đuôi file an toàn từ tên gốc (chỉ '.', chữ và số, tối đa 10 ký tự).
 static std::string safeExtFromFilename(const std::string& name) {
     auto dot = name.find_last_of('.');
@@ -77,11 +96,15 @@ void HttpMediaServer::setupRoutes() {
     // GET /media/... : phục vụ file tĩnh (httplib tự chặn path traversal).
     m_svr->set_mount_point("/media", m_storage_path.c_str());
 
-    // GET /emojis : danh sách custom emoji từ DB.
-    m_svr->Get("/emojis", [this](const httplib::Request&, httplib::Response& res) {
+    // GET /emojis?server_id=N : custom emoji của 1 server.
+    m_svr->Get("/emojis", [this](const httplib::Request& req, httplib::Response& res) {
         try {
+            uint32_t server_id = 0;
+            if (req.has_param("server_id"))
+                server_id = static_cast<uint32_t>(std::stoul(req.get_param_value("server_id")));
+
             nlohmann::json arr = nlohmann::json::array();
-            for (const auto& e : m_db.get_all_custom_emojis()) {
+            for (const auto& e : m_db.emojis_for_server(server_id)) {
                 arr.push_back({ {"shortcode", e.shortcode}, {"url", e.image_url} });
             }
             res.status = 200;
@@ -148,6 +171,17 @@ void HttpMediaServer::setupRoutes() {
             return;
         }
 
+        // Server (guild) sở hữu emoji này.
+        uint32_t server_id = 0;
+        if (req.has_header("X-Server-Id"))
+            server_id = static_cast<uint32_t>(std::stoul(req.get_header_value("X-Server-Id")));
+        if (server_id == 0) {
+            res.status = 400;
+            res.set_content(nlohmann::json{{"error", "missing X-Server-Id"}}.dump(),
+                            "application/json");
+            return;
+        }
+
         const std::string ct = req.get_header_value("Content-Type");
         std::string ext = extFromContentType(ct);
         if (ext.empty()) ext = ".png";   // emoji mặc định PNG
@@ -166,7 +200,7 @@ void HttpMediaServer::setupRoutes() {
 
         const std::string url = mediaUrl(safe_name);
         try {
-            m_db.add_custom_emoji(shortcode, url);
+            m_db.add_custom_emoji(server_id, shortcode, url);
         } catch (const std::exception& e) {
             Logger::instance().error(std::string("[Media] emoji db: ") + e.what());
             res.status = 500;
@@ -179,6 +213,49 @@ void HttpMediaServer::setupRoutes() {
         res.set_content(nlohmann::json{
             {"status", "success"}, {"shortcode", shortcode}, {"url", url}
         }.dump(), "application/json");
+    });
+
+    // GET /gif_search?q=... : proxy tới Giphy (giữ API key ở server).
+    m_svr->Get("/gif_search", [this](const httplib::Request& req, httplib::Response& res) {
+        if (m_giphy_key.empty()) {
+            res.status = 503;
+            res.set_content(nlohmann::json{{"error", "no giphy api key configured"}}.dump(),
+                            "application/json");
+            return;
+        }
+
+        const std::string q = req.has_param("q") ? req.get_param_value("q") : "";
+        std::string path = "/v1/gifs/" + std::string(q.empty() ? "trending" : "search")
+                         + "?api_key=" + m_giphy_key + "&limit=24&rating=pg-13";
+        if (!q.empty()) path += "&q=" + urlEncode(q);
+
+        httplib::Client cli("https://api.giphy.com");
+        cli.set_connection_timeout(5, 0);
+        cli.set_read_timeout(8, 0);
+
+        auto gr = cli.Get(path.c_str());
+        nlohmann::json out = nlohmann::json::array();
+        if (gr && gr->status == 200) {
+            try {
+                auto j = nlohmann::json::parse(gr->body);
+                for (const auto& g : j["data"]) {
+                    const auto& fh  = g["images"]["fixed_height"];
+                    const auto& fhs = g["images"]["fixed_height_small"];
+                    out.push_back({
+                        {"url",     fh.value("url", std::string())},
+                        {"preview", fhs.value("url", fh.value("url", std::string()))},
+                        {"width",   std::stoi(fh.value("width", std::string("0")))},
+                        {"height",  std::stoi(fh.value("height", std::string("0")))}
+                    });
+                }
+            } catch (const std::exception& e) {
+                Logger::instance().warning(std::string("[Media] giphy parse: ") + e.what());
+            }
+        } else {
+            Logger::instance().warning("[Media] giphy request failed");
+        }
+        res.status = 200;
+        res.set_content(out.dump(), "application/json");
     });
 }
 

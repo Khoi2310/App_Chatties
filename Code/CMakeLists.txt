@@ -18,6 +18,7 @@ find_package(nlohmann_json CONFIG REQUIRED)
 find_package(SQLiteCpp CONFIG REQUIRED)
 find_package(unofficial-sodium CONFIG REQUIRED)
 find_package(httplib CONFIG REQUIRED)
+find_package(OpenSSL REQUIRED)   # cho HTTPS gọi Giphy
 
 # Add executable
 add_executable(ServerApp
@@ -49,6 +50,8 @@ target_link_libraries(ServerApp PRIVATE
     SQLiteCpp
     unofficial-sodium::sodium
     httplib::httplib
+    OpenSSL::SSL
+    OpenSSL::Crypto
 )
 
 # On Windows, Asio needs the Winsock libraries linked explicitly.

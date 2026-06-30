@@ -9,7 +9,9 @@ namespace httplib { class Server; }
 
 class HttpMediaServer {
 public:
-    HttpMediaServer(const std::string& host, int port, const std::string& storage_path, chatties::server::db::Database& db);
+    HttpMediaServer(const std::string& host, int port, const std::string& storage_path,
+                    chatties::server::db::Database& db,
+                    const std::string& giphy_key = "");
     ~HttpMediaServer();
 
     void start();
@@ -20,6 +22,7 @@ private:
     std::string m_public_host; // host dùng trong URL trả về client
     int m_port;
     std::string m_storage_path;
+    std::string m_giphy_key;   // API key Giphy (giữ ở server)
 
     std::unique_ptr<httplib::Server> m_svr;
     std::thread m_server_thread;

@@ -259,7 +259,8 @@ private:
         nlohmann::json env;
         env["op"]   = "message.create";
         env["data"] = message_to_json(rec);
-        std::string payload = env.dump() + "\n";
+        std::string payload = env.dump(-1, ' ', false,
+                                       nlohmann::json::error_handler_t::replace) + "\n";
 
         // Chỉ gửi cho client đang xem đúng channel này.
         for (auto& conn : connections_) {

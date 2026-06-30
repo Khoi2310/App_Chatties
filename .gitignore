@@ -13,6 +13,10 @@ Makefile
 *.cmake.stamp
 compile_commands.json
 
+# ─── Secrets / config ─────────────────────────────────────────────
+# Holds the Giphy API key — never commit it.
+server_config.json
+
 # ─── vcpkg ────────────────────────────────────────────────────────
 # We use a system vcpkg (via VCPKG_ROOT), not an in-repo one.
 vcpkg/

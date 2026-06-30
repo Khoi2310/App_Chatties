@@ -21,6 +21,14 @@ Item {
         "☕","🍕","🍻","🎮","🐱","🐶","🌟","💬","📌","🎵"
     ]
 
+    // Custom emoji từ server: danh sách [{shortcode, url}] và map shortcode->url
+    property var customEmojis: []
+    property var emojiMap: ({})
+    property string emojiUploadPath: ""
+
+    // Kết quả tìm GIF từ Giphy
+    property var gifResults: []
+
     // Trạng thái trả lời / sửa
     property int    replyingToId: 0
     property string replyingToName: ""
@@ -49,6 +57,14 @@ Item {
     readonly property int currentServerId:
         (servers.length > currentServerIndex && currentServerIndex >= 0)
             ? servers[currentServerIndex].id : 0
+
+    // Đổi server → nạp custom emoji của server đó.
+    onCurrentServerIdChanged: {
+        root.emojiMap = ({})
+        root.customEmojis = []
+        if (currentServerId !== 0)
+            chatClient.fetchCustomEmojis(currentServerId)
+    }
 
     function selectChannel(id) {
         currentChannelId = id
@@ -587,7 +603,7 @@ Item {
                                 wrapMode: Text.WordWrap
                                 text: model.deleted
                                       ? "<i><span style='color:#b5bac1;'>" + qsTr("[message deleted]") + "</span></i>"
-                                      : root.escapeHtml(model.content)
+                                      : root.renderContent(model.content)
                                         + (model.edited
                                            ? " <span style='color:#b5bac1; font-size:11px;'>" + qsTr("(edited)") + "</span>"
                                            : "")
@@ -602,9 +618,39 @@ Item {
                                 Repeater {
                                     model: msgItem.mAttachments
                                     Loader {
-                                        sourceComponent: (modelData.kind === "image" || modelData.kind === "gif")
-                                                         ? imageAtt : fileAtt
+                                        sourceComponent: modelData.kind === "image" ? imageAtt
+                                                         : (modelData.kind === "gif" ? gifAtt : fileAtt)
                                         property var att: modelData
+
+                                        Component {
+                                            id: gifAtt
+                                            Rectangle {
+                                                radius: 10
+                                                clip: true
+                                                color: "transparent"
+                                                width: gimg.width
+                                                height: gimg.height
+                                                AnimatedImage {
+                                                    id: gimg
+                                                    source: att.url
+                                                    asynchronous: true
+                                                    cache: true
+                                                    playing: true
+                                                    fillMode: Image.PreserveAspectFit
+                                                    // AnimatedImage không hỗ trợ sourceSize ổn định —
+                                                    // tự co theo tỉ lệ gốc, chặn bề rộng tối đa 320.
+                                                    width: implicitWidth > 0 ? Math.min(implicitWidth, 320) : 240
+                                                    height: implicitWidth > 0
+                                                            ? width * implicitHeight / implicitWidth
+                                                            : 180
+                                                }
+                                                MouseArea {
+                                                    anchors.fill: parent
+                                                    cursorShape: Qt.PointingHandCursor
+                                                    onClicked: Qt.openUrlExternally(att.url)
+                                                }
+                                            }
+                                        }
 
                                         Component {
                                             id: imageAtt
@@ -703,7 +749,8 @@ Item {
                         anchors.right: parent.right
                         anchors.top: parent.top
                         anchors.rightMargin: 8
-                        anchors.topMargin: 0
+                        // Lùi xuống dưới vạch chia ngày để không đè lên timeline.
+                        anchors.topMargin: msgItem.dividerHeight + groupLeadGap
                         width: 26; height: 26; radius: 13
                         z: 10
                         visible: (msgHover.hovered || actionMenu.opened) && !model.deleted
@@ -1083,6 +1130,93 @@ Item {
                             onAccepted: root.doSend()
                         }
 
+                        // Nút GIF bên trong hộp.
+                        Label {
+                            id: gifIcon
+                            text: "GIF"
+                            font.pixelSize: 12
+                            font.bold: true
+                            Layout.preferredWidth: 32
+                            Layout.alignment: Qt.AlignVCenter
+                            horizontalAlignment: Text.AlignHCenter
+                            opacity: root.currentChannelId !== 0 ? 1.0 : 0.4
+                            color: gifArea.containsMouse ? Theme.textPrimary : Theme.textMuted
+
+                            MouseArea {
+                                id: gifArea
+                                anchors.fill: parent
+                                hoverEnabled: true
+                                cursorShape: Qt.PointingHandCursor
+                                enabled: root.currentChannelId !== 0
+                                onClicked: gifPopup.open()
+                            }
+
+                            Popup {
+                                id: gifPopup
+                                width: 360
+                                height: 380
+                                padding: 8
+                                modal: false
+                                x: gifIcon.width - width
+                                y: -height - 8
+                                onAboutToShow: {
+                                    gifSearchField.text = ""
+                                    chatClient.searchGifs("")   // trending
+                                }
+                                background: Rectangle {
+                                    color: Theme.surface
+                                    radius: Theme.radius
+                                    border.color: Theme.inputBg
+                                }
+                                contentItem: ColumnLayout {
+                                    spacing: 6
+                                    TextField {
+                                        id: gifSearchField
+                                        Layout.fillWidth: true
+                                        placeholderText: qsTr("Search GIFs…")
+                                        onTextChanged: gifSearchTimer.restart()
+                                    }
+                                    Timer {
+                                        id: gifSearchTimer
+                                        interval: 350
+                                        onTriggered: chatClient.searchGifs(gifSearchField.text)
+                                    }
+                                    GridView {
+                                        Layout.fillWidth: true
+                                        Layout.fillHeight: true
+                                        clip: true
+                                        cellWidth: 114
+                                        cellHeight: 90
+                                        model: root.gifResults
+                                        delegate: Item {
+                                            width: 112; height: 88
+                                            AnimatedImage {
+                                                anchors.fill: parent
+                                                anchors.margins: 2
+                                                source: modelData.preview
+                                                fillMode: Image.PreserveAspectCrop
+                                                asynchronous: true
+                                                cache: true
+                                            }
+                                            MouseArea {
+                                                anchors.fill: parent
+                                                cursorShape: Qt.PointingHandCursor
+                                                onClicked: {
+                                                    chatClient.sendMessage("", root.replyingToId, [
+                                                        { "url": modelData.url, "kind": "gif",
+                                                          "filename": "giphy.gif", "size": 0 }
+                                                    ])
+                                                    root.replyingToId = 0
+                                                    root.replyingToName = ""
+                                                    gifPopup.close()
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
                         // Icon emoji bên trong hộp.
                         Label {
                             id: emojiIcon
@@ -1114,28 +1248,75 @@ Item {
                                     border.color: Theme.inputBg
                                 }
 
-                                contentItem: Grid {
-                                    columns: 10
-                                    spacing: 4
-                                    Repeater {
-                                        model: root.emojis
-                                        Item {
-                                            width: 28; height: 28
-                                            Label {
-                                                anchors.centerIn: parent
-                                                text: modelData
-                                                font.pixelSize: 20
-                                            }
-                                            MouseArea {
-                                                anchors.fill: parent
-                                                cursorShape: Qt.PointingHandCursor
-                                                onClicked: {
-                                                    input.insert(input.cursorPosition, modelData)
-                                                    // Giữ bảng emoji mở để chọn nhiều emoji liên tiếp.
-                                                    input.forceActiveFocus()
+                                onAboutToShow: chatClient.fetchCustomEmojis(root.currentServerId)
+                                contentItem: Column {
+                                    width: 320
+                                    spacing: 6
+
+                                    // Emoji Unicode
+                                    Grid {
+                                        columns: 10
+                                        spacing: 4
+                                        Repeater {
+                                            model: root.emojis
+                                            Item {
+                                                width: 28; height: 28
+                                                Label {
+                                                    anchors.centerIn: parent
+                                                    text: modelData
+                                                    font.pixelSize: 20
+                                                }
+                                                MouseArea {
+                                                    anchors.fill: parent
+                                                    cursorShape: Qt.PointingHandCursor
+                                                    onClicked: {
+                                                        input.insert(input.cursorPosition, modelData)
+                                                        input.forceActiveFocus()
+                                                    }
                                                 }
                                             }
                                         }
+                                    }
+
+                                    Rectangle {
+                                        width: parent.width; height: 1
+                                        color: Theme.inputBg
+                                        visible: root.customEmojis.length > 0
+                                    }
+
+                                    // Custom emoji của server (chèn :shortcode:)
+                                    Grid {
+                                        columns: 10
+                                        spacing: 4
+                                        visible: root.customEmojis.length > 0
+                                        Repeater {
+                                            model: root.customEmojis
+                                            Item {
+                                                width: 28; height: 28
+                                                Image {
+                                                    anchors.centerIn: parent
+                                                    width: 24; height: 24
+                                                    source: modelData.url
+                                                    fillMode: Image.PreserveAspectFit
+                                                    asynchronous: true
+                                                }
+                                                MouseArea {
+                                                    anchors.fill: parent
+                                                    cursorShape: Qt.PointingHandCursor
+                                                    onClicked: {
+                                                        input.insert(input.cursorPosition, ":" + modelData.shortcode + ":")
+                                                        input.forceActiveFocus()
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+
+                                    Button {
+                                        text: qsTr("+ Add custom emoji")
+                                        flat: true
+                                        font.pixelSize: 12
+                                        onClicked: { emojiPopup.close(); addEmojiDialog.open() }
                                     }
                                 }
                             }
@@ -1143,6 +1324,41 @@ Item {
                     }
                 }
 
+            }
+        }
+    }
+
+    // Dialog thêm custom emoji
+    Dialog {
+        id: addEmojiDialog
+        title: qsTr("Add custom emoji")
+        anchors.centerIn: parent
+        modal: true
+        width: 320
+        padding: 16
+        standardButtons: Dialog.Cancel | Dialog.Ok
+        onAccepted: {
+            var sc = emojiShortcode.text.trim()
+            if (sc.length > 0 && root.emojiUploadPath.length > 0 && root.currentServerId !== 0)
+                chatClient.uploadCustomEmoji(root.currentServerId, sc, root.emojiUploadPath)
+            emojiShortcode.text = ""
+            root.emojiUploadPath = ""
+        }
+        contentItem: ColumnLayout {
+            spacing: 8
+            TextField {
+                id: emojiShortcode
+                Layout.fillWidth: true
+                placeholderText: qsTr("shortcode (e.g. kek)")
+            }
+            Button {
+                Layout.fillWidth: true
+                text: root.emojiUploadPath.length > 0
+                      ? qsTr("Image selected ✓") : qsTr("Choose image")
+                onClicked: {
+                    var p = chatClient.chooseFile()
+                    if (p && p.length > 0) root.emojiUploadPath = p
+                }
             }
         }
     }
@@ -1162,6 +1378,16 @@ Item {
             .replace(/&/g, "&amp;")
             .replace(/</g, "&lt;")
             .replace(/>/g, "&gt;")
+    }
+
+    // Escape + thay :shortcode: bằng ảnh emoji nếu có trong emojiMap.
+    function renderContent(s) {
+        return root.escapeHtml(s).replace(/:([A-Za-z0-9_]+):/g, function(match, code) {
+            var url = root.emojiMap[code]
+            return url
+                ? "<img src='" + url + "' width='20' height='20'>"
+                : match
+        })
     }
 
     function doSend() {
@@ -1192,6 +1418,16 @@ Item {
             root.settingsDisplayName = root.currentUserDisplayName
             root.settingsAvatarUrl = root.currentUserAvatar
             root.settingsBio = root.currentUserBio
+        }
+        function onCustomEmojisReceived(emojis) {
+            root.customEmojis = emojis
+            var m = ({})
+            for (var i = 0; i < emojis.length; ++i)
+                m[emojis[i].shortcode] = emojis[i].url
+            root.emojiMap = m
+        }
+        function onGifResults(gifs) {
+            root.gifResults = gifs
         }
         function onProfileUpdated(avatarUrl, displayName, bio) {
             root.currentUserAvatar = avatarUrl || ""

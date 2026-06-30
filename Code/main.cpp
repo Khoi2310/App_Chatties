@@ -4,7 +4,28 @@
 #include "common/utils/logger.h"
 #include "common/constants.h"
 #include <iostream>
+#include <fstream>
 #include <sodium.h>
+#include <nlohmann/json.hpp>
+
+// Đọc giphy_api_key từ server_config.json (tìm cwd và vài thư mục cha).
+static std::string load_giphy_key() {
+    const char* candidates[] = {
+        "server_config.json", "../server_config.json",
+        "../../server_config.json", "../../../server_config.json"
+    };
+    for (const char* path : candidates) {
+        std::ifstream f(path);
+        if (!f) continue;
+        try {
+            nlohmann::json j; f >> j;
+            std::string key = j.value("giphy_api_key", std::string());
+            if (!key.empty() && key != "PASTE_YOUR_GIPHY_API_KEY_HERE")
+                return key;
+        } catch (...) {}
+    }
+    return "";
+}
 
 int main() {
     try {
@@ -27,7 +48,12 @@ int main() {
 
         // 1. Khởi tạo và chạy HTTP Media Server (Cổng 8081)
         // Truyền tham chiếu `db` vào làm tham số thứ 4 để Server có thể kết nối SQLite
-        HttpMediaServer media_server("0.0.0.0", 8081, "./media_storage", db);
+        std::string giphy_key = load_giphy_key();
+        if (giphy_key.empty())
+            chatties::utils::Logger::instance().warning(
+                "[Main] Chưa có giphy_api_key trong server_config.json — GIF picker sẽ tắt.");
+
+        HttpMediaServer media_server("0.0.0.0", 8081, "./media_storage", db, giphy_key);
         
         media_server.start();
         chatties::utils::Logger::instance().info("[Main] HTTP Media Server đang chạy tại cổng 8081");

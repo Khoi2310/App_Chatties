@@ -126,8 +126,10 @@ void Database::run_migrations() {
     db_.exec(
         "CREATE TABLE IF NOT EXISTS custom_emojis ("
         "  id         INTEGER PRIMARY KEY AUTOINCREMENT,"
-        "  shortcode  TEXT UNIQUE NOT NULL,"
-        "  image_url  TEXT NOT NULL"
+        "  server_id  INTEGER NOT NULL,"
+        "  shortcode  TEXT NOT NULL,"
+        "  image_url  TEXT NOT NULL,"
+        "  UNIQUE(server_id, shortcode)"
         ")"
     );
 
@@ -392,11 +394,14 @@ std::vector<MessageRecord> Database::recent_messages(uint32_t channel_id, int li
         if (rec.deleted) rec.content.clear();    // không trả nội dung đã xóa
         rec.reply_to_id = q.getColumn(9).isNull() ? 0 : q.getColumn(9).getUInt();
         if (rec.reply_to_id != 0) {
-            rec.reply_username = q.getColumn(9).getString();
-            bool reply_deleted = q.getColumn(11).getInt() != 0;
-            rec.reply_excerpt  = reply_deleted
-                ? std::string("[deleted]")
-                : make_excerpt(q.getColumn(10).getString());
+            rec.reply_username = q.getColumn(10).getString();           // ru.username
+            const bool reply_deleted = q.getColumn(12).getInt() != 0;  // rm.deleted
+            const std::string reply_content = q.getColumn(11).getString(); // rm.content
+            const int reply_att = q.getColumn(13).getInt();            // số đính kèm
+            if (reply_deleted)               rec.reply_excerpt = "[deleted]";
+            else if (!reply_content.empty()) rec.reply_excerpt = make_excerpt(reply_content);
+            else if (reply_att > 0)          rec.reply_excerpt = "[attachment]";
+            else                             rec.reply_excerpt = "";
         }
         result.push_back(std::move(rec));
     }
@@ -590,26 +595,29 @@ uint32_t Database::channel_server_id(uint32_t channel_id) {
     return 0;
 }
 
-void Database::add_custom_emoji(const std::string& shortcode, const std::string& image_url) {
+void Database::add_custom_emoji(uint32_t server_id, const std::string& shortcode,
+                                const std::string& image_url) {
     std::lock_guard<std::mutex> lock(db_mutex_);
-    // Dùng INSERT OR REPLACE để tự động cập nhật ảnh nếu shortcode đã tồn tại
-    // Chống SQL Injection bằng cơ chế bind tham số của SQLiteCpp
+    // INSERT OR REPLACE: cập nhật ảnh nếu (server_id, shortcode) đã tồn tại.
     SQLite::Statement q(db_,
-        "INSERT OR REPLACE INTO custom_emojis (shortcode, image_url) VALUES (?, ?)");
-    q.bind(1, shortcode);
-    q.bind(2, image_url);
+        "INSERT OR REPLACE INTO custom_emojis (server_id, shortcode, image_url) "
+        "VALUES (?, ?, ?)");
+    q.bind(1, server_id);
+    q.bind(2, shortcode);
+    q.bind(3, image_url);
     q.exec();
-    
+
     utils::Logger::instance().info(
-        "[Database] Đã lưu/cập nhật Emoji: " + shortcode + " -> " + image_url);
+        "[Database] Emoji server " + std::to_string(server_id) + ": " +
+        shortcode + " -> " + image_url);
 }
 
-// [MỚI BỔ SUNG] - Hàm kết nối SQLite lấy danh sách
-std::vector<CustomEmojiRecord> Database::get_all_custom_emojis() {
+std::vector<CustomEmojiRecord> Database::emojis_for_server(uint32_t server_id) {
     std::vector<CustomEmojiRecord> out;
-    // Sắp xếp theo ABC để Client hiển thị đẹp mắt hơn
-    SQLite::Statement q(db_, "SELECT shortcode, image_url FROM custom_emojis ORDER BY shortcode ASC");
-    
+    SQLite::Statement q(db_,
+        "SELECT shortcode, image_url FROM custom_emojis "
+        "WHERE server_id = ? ORDER BY shortcode ASC");
+    q.bind(1, server_id);
     while (q.executeStep()) {
         CustomEmojiRecord r;
         r.shortcode = q.getColumn(0).getString();
