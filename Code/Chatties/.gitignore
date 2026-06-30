@@ -82,3 +82,11 @@ CMakeLists.txt.user*
 .uic/
 /build*/
 /.qtcreator/
+
+# Đề phòng trường hợp chạy nhầm Server tại thư mục Client 
+# làm sinh ra file Database và thư mục ảnh rác.
+
+*.db
+*.db-shm
+*.db-wal
+media_storage/

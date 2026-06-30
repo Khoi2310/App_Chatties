@@ -30,6 +30,8 @@ qt_add_qml_module(Chatties
         AuthView.qml
         ChatView.qml
         Theme.qml
+        GifPicker.qml
+        EmojiPicker.qml
 )
 
 target_link_libraries(Chatties PRIVATE

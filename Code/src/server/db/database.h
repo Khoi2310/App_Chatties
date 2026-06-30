@@ -150,8 +150,9 @@ public:
 
     // ─── Custom Emoji ──────────────────────────────────────────────
     void add_custom_emoji(const std::string& shortcode, const std::string& image_url);
-
-    // [MỚI BỔ SUNG] - Hàm quét toàn bộ Emoji
+    void delete_custom_emoji(const std::string& shortcode);
+    void rename_custom_emoji(const std::string& old_shortcode, const std::string& new_shortcode);
+    // Hàm quét toàn bộ Emoji
     std::vector<CustomEmojiRecord> get_all_custom_emojis();
 
 private:

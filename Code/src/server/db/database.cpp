@@ -305,14 +305,19 @@ bool Database::reply_preview(uint32_t message_id,
                              std::string& out_username,
                              std::string& out_excerpt) {
     SQLite::Statement q(db_,
-        "SELECT u.username, m.content, m.deleted FROM messages m "
-        "JOIN users u ON u.id = m.author_id WHERE m.id = ?");
+        "SELECT u.username, m.content, m.deleted, "
+        "       (SELECT COUNT(*) FROM attachments a WHERE a.message_id = m.id) "
+        "FROM messages m JOIN users u ON u.id = m.author_id WHERE m.id = ?");
     q.bind(1, message_id);
     if (q.executeStep()) {
         out_username = q.getColumn(0).getString();
-        out_excerpt  = (q.getColumn(2).getInt() != 0)
-            ? std::string("[deleted]")
-            : make_excerpt(q.getColumn(1).getString());
+        const bool deleted = q.getColumn(2).getInt() != 0;
+        const std::string content = q.getColumn(1).getString();
+        const int att_count = q.getColumn(3).getInt();
+        if (deleted)               out_excerpt = "[deleted]";
+        else if (!content.empty()) out_excerpt = make_excerpt(content);
+        else if (att_count > 0)    out_excerpt = "[attachment]";
+        else                       out_excerpt = "";
         return true;
     }
     return false;
@@ -361,7 +366,8 @@ std::vector<MessageRecord> Database::recent_messages(uint32_t channel_id, int li
     SQLite::Statement q(db_,
         "SELECT m.id, m.channel_id, m.author_id, u.username, u.avatar_url, m.content, m.created_at, "
         "       m.edited_at, m.deleted, "
-        "       m.reply_to_id, ru.username, rm.content, rm.deleted "
+        "       m.reply_to_id, ru.username, rm.content, rm.deleted, "
+        "       (SELECT COUNT(*) FROM attachments a WHERE a.message_id = rm.id) "
         "FROM messages m "
         "JOIN users u ON u.id = m.author_id "
         "LEFT JOIN messages rm ON rm.id = m.reply_to_id "
@@ -386,11 +392,11 @@ std::vector<MessageRecord> Database::recent_messages(uint32_t channel_id, int li
         if (rec.deleted) rec.content.clear();    // không trả nội dung đã xóa
         rec.reply_to_id = q.getColumn(9).isNull() ? 0 : q.getColumn(9).getUInt();
         if (rec.reply_to_id != 0) {
-            rec.reply_username = q.getColumn(10).getString();
-            bool reply_deleted = q.getColumn(12).getInt() != 0;
+            rec.reply_username = q.getColumn(9).getString();
+            bool reply_deleted = q.getColumn(11).getInt() != 0;
             rec.reply_excerpt  = reply_deleted
                 ? std::string("[deleted]")
-                : make_excerpt(q.getColumn(11).getString());
+                : make_excerpt(q.getColumn(10).getString());
         }
         result.push_back(std::move(rec));
     }
@@ -611,6 +617,29 @@ std::vector<CustomEmojiRecord> Database::get_all_custom_emojis() {
         out.push_back(std::move(r));
     }
     return out;
+}
+
+void Database::delete_custom_emoji(const std::string& shortcode) {
+    // Khóa luồng để bảo vệ DB khi ghi dữ liệu
+    std::lock_guard<std::mutex> lock(db_mutex_);
+    
+    SQLite::Statement q(db_, "DELETE FROM custom_emojis WHERE shortcode = ?");
+    q.bind(1, shortcode);
+    q.exec();
+    
+    utils::Logger::instance().info("[Database] Đã xóa Emoji: " + shortcode);
+}
+void Database::rename_custom_emoji(const std::string& old_shortcode, const std::string& new_shortcode) {
+    // Khóa luồng để bảo vệ DB khi ghi dữ liệu
+    std::lock_guard<std::mutex> lock(db_mutex_);
+    
+    SQLite::Statement q(db_, "UPDATE custom_emojis SET shortcode = ? WHERE shortcode = ?");
+    q.bind(1, new_shortcode);
+    q.bind(2, old_shortcode);
+    q.exec();
+    
+    utils::Logger::instance().info(
+        "[Database] Đã đổi tên Emoji: " + old_shortcode + " -> " + new_shortcode);
 }
 
 } // namespace db
