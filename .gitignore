@@ -67,4 +67,4 @@ desktop.ini
 server.log
     
 # ─── Miscellaneous ───────────────────────────────────────────────
-
+*.claudeignore
