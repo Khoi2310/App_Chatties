@@ -67,4 +67,12 @@ desktop.ini
 server.log
     
 # ─── Miscellaneous ───────────────────────────────────────────────
-*.claudeignore
+
+# ─── Database & Media Storage (MỚI BỔ SUNG) ───────────────────────
+# Bỏ qua toàn bộ cơ sở dữ liệu SQLite và các file tạm WAL
+*.db
+*.db-shm
+*.db-wal
+
+# Bỏ qua toàn bộ nội dung trong thư mục lưu trữ media
+media_storage/*

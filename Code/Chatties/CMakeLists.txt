@@ -18,8 +18,13 @@ qt_add_executable(Chatties
     messagemodel.h
 )
 
-# Theme.qml is a QML singleton (must be marked before qt_add_qml_module).//
-set_source_files_properties(Theme.qml PROPERTIES
+# Auto-bundle every PNG dropped into images/presets/ (reconfigure on folder changes).
+file(GLOB PRESET_AVATAR_IMAGES CONFIGURE_DEPENDS
+    RELATIVE "${CMAKE_CURRENT_SOURCE_DIR}"
+    "images/presets/*.png")
+
+# Theme.qml and PresetAvatars.qml are QML singletons (must be marked before qt_add_qml_module).
+set_source_files_properties(Theme.qml PresetAvatars.qml PROPERTIES
     QT_QML_SINGLETON_TYPE TRUE)
 
 qt_add_qml_module(Chatties
@@ -29,7 +34,11 @@ qt_add_qml_module(Chatties
         Main.qml
         AuthView.qml
         ChatView.qml
+        PresetAvatarPopup.qml
+        PresetAvatars.qml
         Theme.qml
+    RESOURCES
+        ${PRESET_AVATAR_IMAGES}
 )
 
 target_link_libraries(Chatties PRIVATE

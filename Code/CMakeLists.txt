@@ -52,6 +52,8 @@ target_link_libraries(ServerApp PRIVATE
     httplib::httplib
     OpenSSL::SSL
     OpenSSL::Crypto
+    OpenSSL::SSL
+    OpenSSL::Crypto
 )
 
 # On Windows, Asio needs the Winsock libraries linked explicitly.

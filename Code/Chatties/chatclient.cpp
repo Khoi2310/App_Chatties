@@ -375,3 +375,103 @@ void ChatClient::onReadyRead() {
         }
     }
 }
+
+void ChatClient::uploadCustomEmoji(const QString& localPathOrUrl, const QString& shortcode) {
+    // 1. Chuẩn hóa đường dẫn (Loại bỏ file:// từ QML FileDialog)
+    QString path = localPathOrUrl;
+    if (path.startsWith("file:")) {
+        path = QUrl(path).toLocalFile();
+    }
+
+    // 2. Chặn file quá khổ (Giới hạn Emoji thường chỉ dưới 1MB)
+    const qint64 MAX_EMOJI_SIZE = 1LL * 1024 * 1024; // 1 MB
+    if (QFileInfo(path).size() > MAX_EMOJI_SIZE) {
+        emit uploadFailed(tr("Emoji file too large (max 1 MB)"));
+        return;
+    }
+
+    QFile file(path);
+    if (!file.open(QIODevice::ReadOnly)) {
+        emit uploadFailed(tr("Cannot open emoji file: ") + path);
+        return;
+    }
+    const QByteArray bytes = file.readAll();
+    file.close();
+
+    // 3. Phân tích đuôi file để dán nhãn Content-Type
+    const QString suffix = QFileInfo(path).suffix().toLower();
+    QString contentType = "image/png"; // Default
+    if (suffix == "jpg" || suffix == "jpeg") contentType = "image/jpeg";
+    else if (suffix == "gif") contentType = "image/gif";
+    else if (suffix == "webp") contentType = "image/webp";
+
+    // 4. Khởi tạo Request (Ghi chú: Cần sửa 127.0.0.1 thành biến động trong tương lai)
+    QNetworkRequest req(QUrl("http://127.0.0.1:8081/upload_emoji"));
+    req.setHeader(QNetworkRequest::ContentTypeHeader, contentType);
+    
+    // Dán tên Shortcode vào Header để Server C++ đọc được
+    req.setRawHeader("X-Emoji-Shortcode", shortcode.toUtf8());
+
+    // 5. Gửi dữ liệu nhị phân
+    QNetworkReply* reply = netManager_->post(req, bytes);
+    connect(reply, &QNetworkReply::finished, this, [this, reply, shortcode]() {
+        reply->deleteLater();
+        if (reply->error() != QNetworkReply::NoError) {
+            emit uploadFailed("Upload Emoji Error: " + reply->errorString());
+            return;
+        }
+        
+        // 6. Bóc tách JSON trả về từ Server để lấy URL thực tế
+        const QJsonObject obj = QJsonDocument::fromJson(reply->readAll()).object();
+        const QString url = obj.value("url").toString();
+        
+        if (!url.isEmpty()) {
+            emit customEmojiUploaded(shortcode, url);
+        }
+    });
+}
+
+qint64 ChatClient::getLocalFileSize(const QString& localPathOrUrl) {
+    QString path = localPathOrUrl;
+    if (path.startsWith("file:")) {
+        path = QUrl(path).toLocalFile();
+    }
+    
+    QFileInfo fileInfo(path);
+    if (fileInfo.exists()) {
+        return fileInfo.size(); // Trả về số Byte
+    }
+    return 0;
+}
+
+void ChatClient::deleteCustomEmoji(const QString& shortcode) {
+    QNetworkRequest req(QUrl("http://127.0.0.1:8081/delete_emoji"));
+    req.setRawHeader("X-Emoji-Shortcode", shortcode.toUtf8());
+
+    // Dùng mảng byte rỗng vì chúng ta chỉ cần gửi Header
+    QNetworkReply* reply = netManager_->post(req, QByteArray());
+    connect(reply, &QNetworkReply::finished, this, [this, reply, shortcode]() {
+        reply->deleteLater();
+        if (reply->error() == QNetworkReply::NoError) {
+            emit customEmojiDeleted(shortcode);
+        } else {
+            qDebug() << "[Client] Lỗi Xóa Emoji:" << reply->errorString();
+        }
+    });
+}
+
+void ChatClient::renameCustomEmoji(const QString& oldShortcode, const QString& newShortcode) {
+    QNetworkRequest req(QUrl("http://127.0.0.1:8081/rename_emoji"));
+    req.setRawHeader("X-Emoji-Old-Shortcode", oldShortcode.toUtf8());
+    req.setRawHeader("X-Emoji-New-Shortcode", newShortcode.toUtf8());
+
+    QNetworkReply* reply = netManager_->post(req, QByteArray());
+    connect(reply, &QNetworkReply::finished, this, [this, reply, oldShortcode, newShortcode]() {
+        reply->deleteLater();
+        if (reply->error() == QNetworkReply::NoError) {
+            emit customEmojiRenamed(oldShortcode, newShortcode);
+        } else {
+            qDebug() << "[Client] Lỗi Đổi tên Emoji:" << reply->errorString();
+        }
+    });
+}

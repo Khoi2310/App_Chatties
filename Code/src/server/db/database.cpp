@@ -627,6 +627,29 @@ std::vector<CustomEmojiRecord> Database::emojis_for_server(uint32_t server_id) {
     return out;
 }
 
+void Database::delete_custom_emoji(const std::string& shortcode) {
+    // Khóa luồng để bảo vệ DB khi ghi dữ liệu
+    std::lock_guard<std::mutex> lock(db_mutex_);
+    
+    SQLite::Statement q(db_, "DELETE FROM custom_emojis WHERE shortcode = ?");
+    q.bind(1, shortcode);
+    q.exec();
+    
+    utils::Logger::instance().info("[Database] Đã xóa Emoji: " + shortcode);
+}
+void Database::rename_custom_emoji(const std::string& old_shortcode, const std::string& new_shortcode) {
+    // Khóa luồng để bảo vệ DB khi ghi dữ liệu
+    std::lock_guard<std::mutex> lock(db_mutex_);
+    
+    SQLite::Statement q(db_, "UPDATE custom_emojis SET shortcode = ? WHERE shortcode = ?");
+    q.bind(1, new_shortcode);
+    q.bind(2, old_shortcode);
+    q.exec();
+    
+    utils::Logger::instance().info(
+        "[Database] Đã đổi tên Emoji: " + old_shortcode + " -> " + new_shortcode);
+}
+
 } // namespace db
 } // namespace server
 } // namespace chatties
