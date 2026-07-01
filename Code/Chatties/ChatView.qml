@@ -12,6 +12,143 @@ Item {
     property int currentServerIndex: 0
     property int currentChannelId: 0
 
+    // BỔ SUNG: Từ điển lưu trữ ánh xạ giữa Shortcode và Link thật của Custom Emoji
+    property var customEmojiDictionary: ({})
+
+    // --- BẢNG THẢ REACTION TOÀN CỤC ---
+    Popup {
+        id: globalReactPopup
+        property int targetMsgId: 0
+
+        width: 320
+        height: 280
+        modal: false
+        padding: 0
+        
+        background: Rectangle {
+            color: Theme.surface
+            radius: 8
+            border.color: Theme.inputBg
+        }
+
+        onAboutToShow: {
+            reactionCustomModel.clear()
+            for (var key in root.customEmojiDictionary) {
+                if (root.customEmojiDictionary.hasOwnProperty(key)) {
+                    reactionCustomModel.append({ "shortcode": key, "url": root.customEmojiDictionary[key] })
+                }
+            }
+        }
+
+        ListModel { id: reactionCustomModel }
+
+        ColumnLayout {
+            anchors.fill: parent
+            spacing: 0
+
+            // 1. THANH TAB BAR
+            TabBar {
+                id: reactTabBar
+                Layout.fillWidth: true
+                background: Rectangle { color: "transparent" }
+                
+                TabButton {
+                    text: "Mặc định"
+                    width: implicitWidth
+                    contentItem: Text {
+                        text: parent.text
+                        color: reactTabBar.currentIndex === 0 ? Theme.textPrimary : Theme.textMuted
+                        font.bold: true
+                        horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter
+                    }
+                    background: Rectangle {
+                        color: "transparent"
+                        Rectangle { width: parent.width; height: 2; color: Theme.accent; anchors.bottom: parent.bottom; visible: reactTabBar.currentIndex === 0 }
+                    }
+                }
+                TabButton {
+                    text: "Tùy chỉnh"
+                    width: implicitWidth
+                    contentItem: Text {
+                        text: parent.text
+                        color: reactTabBar.currentIndex === 1 ? Theme.textPrimary : Theme.textMuted
+                        font.bold: true
+                        horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter
+                    }
+                    background: Rectangle {
+                        color: "transparent"
+                        Rectangle { width: parent.width; height: 2; color: Theme.accent; anchors.bottom: parent.bottom; visible: reactTabBar.currentIndex === 1 }
+                    }
+                }
+            }
+
+            // Đường kẻ ngang phân cách
+            Rectangle { Layout.fillWidth: true; height: 1; color: Theme.inputBg }
+
+            // 2. KHU VỰC NỘI DUNG (CHUYỂN TAB)
+            StackLayout {
+                currentIndex: reactTabBar.currentIndex
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+
+                // Tab 1: Emoji Mặc định
+                ScrollView {
+                    clip: true
+                    ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
+                    Flow {
+                        width: globalReactPopup.width
+                        padding: 12
+                        spacing: 8
+                        Repeater {
+                            model: root.emojis
+                            Text {
+                                text: modelData; font.pixelSize: 24
+                                MouseArea {
+                                    anchors.fill: parent; anchors.margins: -4
+                                    cursorShape: Qt.PointingHandCursor; hoverEnabled: true
+                                    Rectangle { anchors.fill: parent; color: Theme.textPrimary; opacity: parent.containsMouse ? 0.1 : 0.0; radius: 6; z: -1 }
+                                    onClicked: { 
+                                        chatClient.toggleReaction(globalReactPopup.targetMsgId, modelData)
+                                        globalReactPopup.close() 
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Tab 2: Emoji Tùy chỉnh
+                ScrollView {
+                    clip: true
+                    ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
+                    Flow {
+                        width: globalReactPopup.width
+                        padding: 12
+                        spacing: 8
+                        Repeater {
+                            model: reactionCustomModel
+                            Image {
+                                width: 24; height: 24
+                                source: model.url
+                                fillMode: Image.PreserveAspectFit
+                                asynchronous: true
+                                MouseArea {
+                                    anchors.fill: parent; anchors.margins: -4
+                                    cursorShape: Qt.PointingHandCursor; hoverEnabled: true
+                                    Rectangle { anchors.fill: parent; color: Theme.textPrimary; opacity: parent.containsMouse ? 0.1 : 0.0; radius: 6; z: -1 }
+                                    onClicked: { 
+                                        chatClient.toggleReaction(globalReactPopup.targetMsgId, ":" + model.shortcode + ":")
+                                        globalReactPopup.close() 
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     // Bộ emoji Unicode cho composer.
     property var emojis: [
         "😀","😁","😂","🤣","😊","😍","😎","😉","🙂","😴",
@@ -58,10 +195,15 @@ Item {
 
     function avatarColorForName(name) {
         var base = String(name || "?").toUpperCase()
-        var sum = 0
-        for (var i = 0; i < base.length; ++i) sum += base.charCodeAt(i)
+        var hash = 0
+
+        for (var i = 0; i < base.length; ++i) {
+            hash = base.charCodeAt(i) + ((hash << 5) - hash)
+        }
+
         var palette = ["#5865f2", "#f26522", "#1f9d7a", "#f0b232", "#e84d4d", "#8e5bdc", "#2ecc71", "#3498db"]
-        return palette[sum % palette.length]
+        var index = Math.abs(hash) % palette.length
+        return palette[index]
     }
 
     function avatarInitial(name) {
@@ -614,6 +756,7 @@ Item {
                                 }
                             }
                             Label {
+                                id: msgTextLabel
                                 anchors.left: parent.left
                                 anchors.right: parent.right
                                 anchors.leftMargin: 8
@@ -622,13 +765,79 @@ Item {
                                 textFormat: Text.RichText
                                 color: Theme.textPrimary
                                 wrapMode: Text.WordWrap
+
+                                // Thuộc tính lưu giữ văn bản đã lọc
+                                property string cleanContent: (msgItem.mContent || "").replace(/(https?:\/\/[^\s]+?\.gif(?:\?[^\s]*)?)/gi, "").trim()
+                                
+                                // Gọi biến thông qua ID để không bao giờ bị báo undefined
+                                visible: msgTextLabel.cleanContent.length > 0 || model.deleted
+
+                                // HÀM PARSER ĐA NĂNG - Biến :token: thành Icon nhỏ xinh
+                                function parseCustomEmoji(rawText) {
+                                    if (model.deleted) return "";
+                                    var escapedText = root.escapeHtml(rawText);
+                                    var emojiRegex = /:([a-zA-Z0-9_\-]+):/g;
+
+                                    return escapedText.replace(emojiRegex, function(match, emojiName) {
+                                        // 1. Lấy link thực sự từ Từ điển
+                                        var realUrl = root.customEmojiDictionary[emojiName];
+                                        
+                                        // 2. Nếu tìm thấy link thực, render ảnh. Nếu không, trả lại nguyên chữ :ten_emoji:
+                                        if (realUrl) {
+                                            return '<img src="' + realUrl + '" width="22" height="22" align="middle" />';
+                                        }
+                                        return match; 
+                                    });
+                                }
+
                                 text: model.deleted
                                       ? "<i><span style='color:#b5bac1;'>" + qsTr("[message deleted]") + "</span></i>"
-                                      : root.escapeHtml(model.content)
+                                      : parseCustomEmoji(msgTextLabel.cleanContent)
                                         + (model.edited
                                            ? " <span style='color:#b5bac1; font-size:11px;'>" + qsTr("(edited)") + "</span>"
                                            : "")
+
+                                // Bổ sung sự kiện để khi người dùng click vào cái ảnh động (bây giờ là thẻ HTML img), 
+                                // nó sẽ mở link trên trình duyệt
+                                onLinkActivated: Qt.openUrlExternally(link)           
                             }
+
+                            // KHU VỰC HIỂN THỊ GIF ẢO (Từ Giphy)
+                            Column {
+                                anchors.left: parent.left
+                                anchors.leftMargin: 8
+                                spacing: 4
+                                visible: !model.deleted
+                                
+                                Repeater {
+                                    model: {
+                                        var urls = [];
+                                        var regex = /(https?:\/\/[^\s]+?\.gif(?:\?[^\s]*)?)/gi;
+                                        var match;
+                                        var raw = msgItem.mContent || "";
+                                        while ((match = regex.exec(raw)) !== null) {
+                                            urls.push(match[1]);
+                                        }
+                                        return urls;
+                                    }
+                                    
+                                    delegate: AnimatedImage {
+                                        source: modelData
+                                        asynchronous: true
+                                        fillMode: AnimatedImage.PreserveAspectFit
+                                        sourceSize.width: 320
+                                        sourceSize.height: 250
+                                        width: implicitWidth > 0 ? Math.min(implicitWidth, 320) : 200
+                                        height: implicitHeight > 0 ? Math.min(implicitHeight, 250) : 200
+                                        
+                                        MouseArea {
+                                            anchors.fill: parent
+                                            cursorShape: Qt.PointingHandCursor
+                                            onClicked: Qt.openUrlExternally(modelData)
+                                        }
+                                    }
+                                }
+                            }    
 
                             // Đính kèm (ảnh/gif hiển thị inline, file khác là thẻ)
                             Column {
@@ -645,22 +854,27 @@ Item {
 
                                         Component {
                                             id: imageAtt
+                                            
+                                            // Dùng Rectangle bo góc 10px (Kế thừa từ code mới)
                                             Rectangle {
                                                 radius: 10
                                                 clip: true
                                                 color: "transparent"
                                                 width: img.width
                                                 height: img.height
-
-                                                Image {
+                                                
+                                                // Dùng AnimatedImage để render được file .gif (Kế thừa từ code cũ)
+                                                AnimatedImage {
                                                     id: img
                                                     source: att.url
                                                     asynchronous: true
                                                     fillMode: Image.PreserveAspectFit
                                                     sourceSize.width: 320
-                                                    width: Math.min(implicitWidth > 0 ? implicitWidth : sourceSize.width, 320)
+                                                    sourceSize.height: 250
+                                                    // Lấy logic tính toán kích thước an toàn từ code mới
+                                                    width: Math.min(implicitWidth > 0 ? implicitWidth : 320, 320)
+                                                    height: Math.min(implicitHeight > 0 ? implicitHeight : 250, 250)
                                                 }
-
                                                 MouseArea {
                                                     anchors.fill: parent
                                                     cursorShape: Qt.PointingHandCursor
@@ -668,7 +882,7 @@ Item {
                                                 }
                                             }
                                         }
-                                        
+                                                               
                                         Component {
                                             id: fileAtt
                                             Rectangle {
@@ -712,22 +926,55 @@ Item {
                                 Repeater {
                                     model: reactionFlow.reactionsData
                                     Rectangle {
+                                        id: reactionPill
                                         height: 22
                                         width: chipRow.implicitWidth + 14
                                         radius: 11
                                         color: Theme.inputBg
 
+                                        // 1. Phân tích: Có phải là Custom Emoji dạng :shortcode: không?
+                                        property string rawEmoji: modelData.emoji || ""
+                                        property bool isCustom: rawEmoji.startsWith(":") && rawEmoji.endsWith(":")
+                                        property string cleanShortcode: isCustom ? rawEmoji.substring(1, rawEmoji.length - 1) : ""
+                                        property string customUrl: isCustom ? (root.customEmojiDictionary[cleanShortcode] || "") : ""
+
                                         Row {
                                             id: chipRow
                                             anchors.centerIn: parent
                                             spacing: 4
-                                            Label { text: modelData.emoji; font.pixelSize: 13 }
-                                            Label { text: modelData.count; color: Theme.textMuted; font.pixelSize: 12 }
+
+                                            // 2A. Nếu là Custom Emoji -> Hiện ẢNH
+                                            Image {
+                                                visible: reactionPill.isCustom && reactionPill.customUrl !== ""
+                                                source: reactionPill.customUrl
+                                                width: 16
+                                                height: 16
+                                                fillMode: Image.PreserveAspectFit
+                                                asynchronous: true
+                                                anchors.verticalCenter: parent.verticalCenter
+                                            }
+
+                                            // 2B. Nếu là Emoji mặc định (hoặc lỗi link) -> Hiện TEXT
+                                            Label { 
+                                                visible: !reactionPill.isCustom || reactionPill.customUrl === ""
+                                                text: reactionPill.rawEmoji 
+                                                font.pixelSize: 13 
+                                                color: Theme.textPrimary
+                                                anchors.verticalCenter: parent.verticalCenter
+                                            }
+
+                                            // 3. Hiển thị số lượng
+                                            Label { 
+                                                text: modelData.count 
+                                                color: Theme.textMuted 
+                                                font.pixelSize: 12 
+                                                anchors.verticalCenter: parent.verticalCenter
+                                            }
                                         }
                                         MouseArea {
                                             anchors.fill: parent
                                             cursorShape: Qt.PointingHandCursor
-                                            onClicked: chatClient.toggleReaction(reactionFlow.msgId, modelData.emoji)
+                                            onClicked: chatClient.toggleReaction(reactionFlow.msgId, reactionPill.rawEmoji)
                                         }
                                     }
                                 }
@@ -804,7 +1051,26 @@ Item {
                                         id: reactArea
                                         anchors.fill: parent; hoverEnabled: true
                                         cursorShape: Qt.PointingHandCursor
-                                        onClicked: { actionMenu.close(); reactPopup.open() }
+                                        onClicked: { 
+                                            actionMenu.close() 
+                                            globalReactPopup.targetMsgId = msgItem.mId
+                                            
+                                            // Quét tọa độ Y của nút bấm
+                                            var absolutePos = mapToItem(root, 0, 0)
+                                            
+                                            // FIX: Gắn chết trục X sang bên phải màn hình (cách lề 24px)
+                                            globalReactPopup.x = root.width - globalReactPopup.width - 24
+                                            globalReactPopup.y = absolutePos.y
+                                            
+                                            // Chống tràn màn hình trục Y
+                                            if (globalReactPopup.y < 8) {
+                                                globalReactPopup.y = 8
+                                            } else if (globalReactPopup.y + globalReactPopup.height > root.height) {
+                                                globalReactPopup.y = root.height - globalReactPopup.height - 8
+                                            }
+                                            
+                                            globalReactPopup.open()
+                                        }
                                     }
                                 }
                                 // Reply
@@ -934,48 +1200,7 @@ Item {
                                 }
                             }
                         }
-                    }
-
-                    // Bảng chọn emoji để thả cảm xúc cho tin nhắn
-                    Popup {
-                        id: reactPopup
-                        property int msgId: msgItem.mId
-                        width: 280
-                        modal: false
-                        // Canh phải; tự lật lên trên nếu không đủ chỗ bên dưới.
-                        x: parent.width - width - 8
-                        y: 28
-                        onAboutToShow: {
-                            var topInList = parent.mapToItem(list, 0, 0).y
-                            var spaceBelow = list.height - topInList
-                            y = (spaceBelow > height + 40) ? 28 : (-height - 4)
-                        }
-
-                        background: Rectangle {
-                            color: Theme.surface
-                            radius: Theme.radius
-                            border.color: Theme.inputBg
-                        }
-                        contentItem: Grid {
-                            columns: 10
-                            spacing: 2
-                            Repeater {
-                                model: root.emojis
-                                Item {
-                                    width: 26; height: 26
-                                    Label { anchors.centerIn: parent; text: modelData; font.pixelSize: 18 }
-                                    MouseArea {
-                                        anchors.fill: parent
-                                        cursorShape: Qt.PointingHandCursor
-                                        onClicked: {
-                                            chatClient.toggleReaction(reactPopup.msgId, modelData)
-                                            reactPopup.close()
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
+                    }             
                 }
 
                 onCountChanged: positionViewAtEnd()
@@ -1120,6 +1345,61 @@ Item {
                             onAccepted: root.doSend()
                         }
 
+                        // NÚT BẤM MỞ BẢNG CHỌN GIF
+                         Label {
+                            id: gifIcon
+                            text: "GIF"
+                            font.pixelSize: 14
+                            font.bold: true
+                            Layout.preferredWidth: 35
+                            Layout.alignment: Qt.AlignVCenter
+                            horizontalAlignment: Text.AlignHCenter
+                            color: gifMouseArea.containsMouse ? Theme.textPrimary : Theme.textMuted
+                            opacity: root.currentChannelId !== 0 ? 1.0 : 0.4
+
+                            MouseArea {
+                                id: gifMouseArea
+                                anchors.fill: parent
+                                hoverEnabled: true
+                                cursorShape: Qt.PointingHandCursor
+                                enabled: root.currentChannelId !== 0
+                                onClicked: gifPopup.open()
+                            }
+
+                            // Popup chứa bản thiết kế GifPicker.qml của chúng ta
+                            Popup {
+                                id: gifPopup
+                                width: 350
+                                height: 400
+                                modal: false
+                                // Canh lề đè lên trên nút GIF
+                                x: gifIcon.width - width
+                                y: -height - 8
+                                padding: 0
+                                
+                                background: Rectangle {
+                                    color: Theme.surface
+                                    radius: Theme.radius
+                                    border.color: Theme.inputBg
+                                }
+
+                                // Nhúng component GifPicker vào đây
+                                GifPicker {
+                                    anchors.fill: parent 
+                                    
+                                    onGifSelected: function(url) {
+                                        gifPopup.close()
+
+                                        // 1. Đổ trực tiếp đường link GIF vào khung nhập liệu
+                                        input.text = url
+                                        
+                                        // 2. Tự động kích hoạt hàm gửi tin nhắn của bạn (giống hệt khi user nhấn Enter)
+                                        root.doSend()
+                                    }
+                                }
+                            }
+                         }                
+
                         // Icon emoji bên trong hộp.
                         Label {
                             id: emojiIcon
@@ -1140,10 +1420,12 @@ Item {
                             // Bảng emoji hiện ngay phía trên icon, canh phải.
                             Popup {
                                 id: emojiPopup
-                                width: 336
+                                width: 350
+                                height: 300
                                 modal: false
                                 x: emojiIcon.width - width
                                 y: -height - 8
+                                padding: 0
 
                                 background: Rectangle {
                                     color: Theme.surface
@@ -1151,28 +1433,15 @@ Item {
                                     border.color: Theme.inputBg
                                 }
 
-                                contentItem: Grid {
-                                    columns: 10
-                                    spacing: 4
-                                    Repeater {
-                                        model: root.emojis
-                                        Item {
-                                            width: 28; height: 28
-                                            Label {
-                                                anchors.centerIn: parent
-                                                text: modelData
-                                                font.pixelSize: 20
-                                            }
-                                            MouseArea {
-                                                anchors.fill: parent
-                                                cursorShape: Qt.PointingHandCursor
-                                                onClicked: {
-                                                    input.insert(input.cursorPosition, modelData)
-                                                    // Giữ bảng emoji mở để chọn nhiều emoji liên tiếp.
-                                                    input.forceActiveFocus()
-                                                }
-                                            }
-                                        }
+                                // Emoji 
+                                EmojiPicker {
+                                    anchors.fill: parent
+                                    defaultEmojis: root.emojis 
+                                    
+                                    onEmojiSelected: function(emojiText) {
+                                        input.insert(input.cursorPosition, emojiText)
+                                        input.forceActiveFocus()
+                                        //emojiPopup.close() 
                                     }
                                 }
                             }

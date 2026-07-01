@@ -35,12 +35,16 @@ public:
     Q_INVOKABLE void editMessage(int messageId, const QString& content);
     Q_INVOKABLE void deleteMessage(int messageId);
     Q_INVOKABLE void toggleReaction(int messageId, const QString& emoji);
+    Q_INVOKABLE void uploadCustomEmoji(const QString& localPathOrUrl, const QString& shortcode);
 
     // Server (guild) & channel
     Q_INVOKABLE void createServer(const QString& name);
     Q_INVOKABLE void joinServer(int serverId);
     Q_INVOKABLE void createChannel(int serverId, const QString& name);
     Q_INVOKABLE void selectChannel(int channelId);
+    Q_INVOKABLE qint64 getLocalFileSize(const QString& localPathOrUrl);
+    Q_INVOKABLE void deleteCustomEmoji(const QString& shortcode);
+    Q_INVOKABLE void renameCustomEmoji(const QString& oldShortcode, const QString& newShortcode);
 
 signals:
     void connected();
@@ -58,6 +62,9 @@ signals:
     void userProfileReceived(int userId, QString username, QString displayName, QString avatarUrl, QString bio);
     void uploadFailed(QString reason);
     void errorReceived(QString reason);
+    void customEmojiUploaded(QString shortcode, QString url);
+    void customEmojiDeleted(QString shortcode);
+    void customEmojiRenamed(QString oldShortcode, QString newShortcode);
 
 private slots:
     void onConnected();

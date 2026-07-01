@@ -3,6 +3,7 @@
 #include <nlohmann/json.hpp>
 
 // CHỈ DEFINE Ở ĐÂY, không được define ở file nào khác
+#define CPPHTTPLIB_OPENSSL_SUPPORT
 #define CPPHTTPLIB_IMPLEMENTATION
 #include <httplib.h>
 
@@ -180,6 +181,71 @@ void HttpMediaServer::setupRoutes() {
             {"status", "success"}, {"shortcode", shortcode}, {"url", url}
         }.dump(), "application/json");
     });
+
+    // GET /gif.search : Trạm trung chuyển lấy ảnh động từ Tenor
+    m_svr->Get("/gif.search", [this](const httplib::Request& req, httplib::Response& res) {
+        this->handleGifSearch(req, res);
+    });
+
+    // POST /delete_emoji : Xóa emoji theo header X-Emoji-Shortcode.
+    m_svr->Post("/delete_emoji", [this](const httplib::Request& req, httplib::Response& res) {
+        const std::string shortcode = req.get_header_value("X-Emoji-Shortcode");
+        if (shortcode.empty()) {
+            res.status = 400;
+            res.set_content(nlohmann::json{{"error", "missing shortcode header"}}.dump(), "application/json");
+            return;
+        }
+
+        try {
+            // [Phản biện Kiến trúc]: Tối ưu nhất là bạn nên viết hàm để DB trả về cái URL trước khi xóa,
+            // sau đó dùng std::remove() của C++ để xóa file vật lý trong thư mục m_storage_path.
+            // Nhưng hiện tại, xóa trong DB là đủ để cắt đứt liên kết hiển thị trên Client.
+            m_db.delete_custom_emoji(shortcode); 
+        } catch (const std::exception& e) {
+            Logger::instance().error(std::string("[Media] delete emoji db: ") + e.what());
+            res.status = 500;
+            res.set_content(nlohmann::json{{"error", "db delete failed"}}.dump(), "application/json");
+            return;
+        }
+
+        res.status = 200;
+        res.set_content(nlohmann::json{{"status", "success"}}.dump(), "application/json");
+    });
+
+    // POST /rename_emoji : Đổi tên emoji tùy chỉnh
+    m_svr->Post("/rename_emoji", [this](const httplib::Request& req, httplib::Response& res) {
+        const std::string old_code = req.get_header_value("X-Emoji-Old-Shortcode");
+        const std::string new_code = req.get_header_value("X-Emoji-New-Shortcode");
+
+        if (old_code.empty() || new_code.empty()) {
+            res.status = 400;
+            res.set_content(nlohmann::json{{"error", "missing shortcode headers"}}.dump(), "application/json");
+            return;
+        }
+
+        // Tái sử dụng hàm kiểm tra định dạng của bạn để ngăn người dùng đổi tên chứa ký tự đặc biệt
+        if (!isValidShortcode(new_code)) {
+            res.status = 400;
+            res.set_content(nlohmann::json{{"error", "invalid new shortcode (use [A-Za-z0-9_], 1-32)"}}.dump(), "application/json");
+            return;
+        }
+
+        try {
+            m_db.rename_custom_emoji(old_code, new_code);
+        } catch (const std::exception& e) {
+            Logger::instance().error(std::string("[Media] rename emoji db: ") + e.what());
+            res.status = 500;
+            res.set_content(nlohmann::json{{"error", "db update failed"}}.dump(), "application/json");
+            return;
+        }
+
+        res.status = 200;
+        res.set_content(nlohmann::json{
+            {"status", "success"}, 
+            {"old_shortcode", old_code}, 
+            {"new_shortcode", new_code}
+        }.dump(), "application/json");
+    });
 }
 
 void HttpMediaServer::start() {
@@ -217,4 +283,66 @@ std::string HttpMediaServer::generateSafeFilename(const std::string& original_fi
 
     // timestamp_random.ext — tên do server sinh, không tin tên do client gửi.
     return std::to_string(now) + "_" + std::to_string(dis(gen)) + ext;
+}
+
+void HttpMediaServer::handleGifSearch(const httplib::Request& req, httplib::Response& res) {
+    using json = nlohmann::json;
+
+    // 1. Lấy từ khóa từ query parameters
+    std::string query = req.has_param("q") ? req.get_param_value("q") : "trending";
+    
+    // 2. Tự mã hóa URL thủ công (Chống vỡ link)
+    std::string encoded_query = "";
+    for (char c : query) {
+        if (std::isalnum(static_cast<unsigned char>(c)) || c == '-' || c == '_' || c == '.' || c == '~') {
+            encoded_query += c;
+        } else if (c == ' ') {
+            encoded_query += "%20";
+        } else {
+            char buf[5];
+            snprintf(buf, sizeof(buf), "%%%02X", static_cast<unsigned char>(c));
+            encoded_query += buf;
+        }
+    }
+
+    // 3. Khởi tạo Client gọi GIPHY 
+    httplib::Client giphy_client("https://api.giphy.com");
+    giphy_client.enable_server_certificate_verification(false);
+
+    // 4. Ráp đường dẫn gọi GIPHY (Sử dụng m_giphy_api_key đang lưu key Giphy của bạn)
+    // Đường dẫn của Giphy dùng /v1/gifs/search và tham số api_key
+    std::string path = "/v1/gifs/search?api_key=" + m_giphy_api_key + "&q=" + encoded_query + "&limit=15";
+    
+    if (auto giphy_res = giphy_client.Get(path)) {
+        if (giphy_res->status == 200) {
+            try {
+                json raw_data = json::parse(giphy_res->body);
+                json clean_urls = json::array();
+
+                // 5. Cào lấy link GIF nhẹ (fixed_height_small) phù hợp cho khung chat
+                // Cấu trúc JSON của Giphy nằm trong mảng "data"
+                for (const auto& item : raw_data["data"]) {
+                    if (item.contains("images") && item["images"].contains("fixed_height_small")) {
+                        std::string gif_url = item["images"]["fixed_height_small"]["url"];
+                        clean_urls.push_back(gif_url);
+                    }
+                }
+
+                res.status = 200;
+                res.set_content(clean_urls.dump(), "application/json");
+            } catch (const json::exception& e) {
+                Logger::instance().error(std::string("[Media] Giphy parse error: ") + e.what());
+                res.status = 500;
+                res.set_content(nlohmann::json{{"error", "Loi parse JSON tu Giphy"}}.dump(), "application/json");
+            }
+        } else {
+            Logger::instance().error("[Media] Giphy rejected with status: " + std::to_string(giphy_res->status));
+            res.status = giphy_res->status;
+            res.set_content(nlohmann::json{{"error", "Giphy API tu choi request"}}.dump(), "application/json");
+        }
+    } else {
+        Logger::instance().error(std::string("[Media] Giphy network error: ") + to_string(giphy_res.error()));
+        res.status = 502;
+        res.set_content(nlohmann::json{{"error", "Khong the ket noi den Giphy"}}.dump(), "application/json");
+    }
 }
