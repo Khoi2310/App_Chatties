@@ -7,6 +7,9 @@
 
 int main(int argc, char* argv[])
 {
+    QApplication::setAttribute(Qt::AA_UseHighDpiPixmaps, true);
+    QApplication::setAttribute(Qt::AA_EnableHighDpiScaling, true);
+
     QApplication app(argc, argv);
 
     // Dùng style Material để có giao diện tối hiện đại.

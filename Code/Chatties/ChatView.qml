@@ -38,7 +38,8 @@ Item {
     property string settingsDisplayName: ""
     property string settingsBio: ""
     property string settingsAvatarUrl: ""
-    
+    property string settingsAvatarUrlAtOpen: ""
+    property int avatarRenderSize: 1024
 
     // Đính kèm đang chờ gửi: [{url, kind, filename, size}]
     property var    pendingAttachments: []
@@ -78,7 +79,21 @@ Item {
     }
 
     function avatarImageSource(url) {
-        return url && String(url).trim().length > 0 ? String(url) : ""
+        var resolved = PresetAvatars.resolveAvatarUrl(url)
+        return resolved && String(resolved).trim().length > 0 ? String(resolved) : ""
+    }
+
+    function avatarBackgroundColor(avatarUrl, displayName) {
+        var presetColor = PresetAvatars.backgroundColorForUrl(avatarUrl)
+        return presetColor.length > 0
+                ? presetColor
+                : avatarColorForName(displayName || "?")
+    }
+
+    function avatarImageMargins(containerSize, avatarUrl) {
+        return PresetAvatars.isPresetUrl(avatarUrl)
+                ? Math.round(containerSize * 0.06)
+                : 0
     }
 
     // Nhãn cho vạch phân chia ngày, vd: "May 29, 2026" — giống style Discord trong ảnh mẫu.
@@ -102,11 +117,24 @@ Item {
         settingsDisplayName = currentUserDisplayName
         settingsBio = currentUserBio
         settingsAvatarUrl = currentUserAvatar
+        settingsAvatarUrlAtOpen = currentUserAvatar
         settingsDialog.open()
+    }
+
+    function revertSettings() {
+        settingsDisplayName = currentUserDisplayName
+        settingsBio = currentUserBio
+        settingsAvatarUrl = currentUserAvatar
+        profileDisplayName.text = currentUserDisplayName
+        profileBio.text = currentUserBio
     }
 
     function saveProfile() {
         chatClient.updateProfile(settingsDisplayName, settingsBio)
+        if (settingsAvatarUrl !== settingsAvatarUrlAtOpen) {
+            chatClient.updateProfileAvatar(settingsAvatarUrl)
+            currentUserAvatar = settingsAvatarUrl
+        }
         settingsDialog.close()
     }
 
@@ -300,7 +328,7 @@ Item {
                     Layout.alignment: Qt.AlignHCenter
                     Layout.fillWidth: false
                     width: 48; height: 48; radius: 24
-                    color: root.avatarColorForName(root.currentUserDisplayName)
+                    color: root.avatarBackgroundColor(root.currentUserAvatar, root.currentUserDisplayName)
                     layer.enabled: true
                     Label {
                         anchors.centerIn: parent
@@ -310,9 +338,15 @@ Item {
                     }
                     Image {
                         anchors.fill: parent
+                        anchors.margins: root.avatarImageMargins(parent.width, root.currentUserAvatar)
                         visible: root.currentUserAvatar && root.currentUserAvatar.length > 0
                         source: root.avatarImageSource(root.currentUserAvatar)
-                        fillMode: Image.PreserveAspectCrop
+                        fillMode: PresetAvatars.isPresetUrl(root.currentUserAvatar)
+                                  ? Image.PreserveAspectFit
+                                  : Image.PreserveAspectCrop
+                        sourceSize: Qt.size(root.avatarRenderSize, root.avatarRenderSize)
+                        smooth: true
+                        mipmap: true
                         asynchronous: true; cache: true
                     }
                     MouseArea {
@@ -500,7 +534,7 @@ Item {
                         radius: 16
                         clip: true
                         opacity: groupedWithPrevious ? 0 : 1
-                        color: root.avatarColorForName(msgItem.mUser || "?")
+                        color: root.avatarBackgroundColor(msgItem.mAvatar, msgItem.mUser || "?")
 
                         Label {
                             anchors.centerIn: parent
@@ -518,6 +552,9 @@ Item {
                                     ? root.avatarImageSource(msgItem.mAvatar)
                                     : ""
                             fillMode: Image.PreserveAspectCrop
+                            sourceSize: Qt.size(root.avatarRenderSize, root.avatarRenderSize)
+                            smooth: true
+                            mipmap: true
                             asynchronous: true
                             cache: true
                         }
@@ -1139,10 +1176,9 @@ Item {
                                     }
                                 }
                             }
-                        }
+                        }      
                     }
                 }
-
             }
         }
     }
@@ -1247,7 +1283,9 @@ Item {
                     id: profileAvatarContainer
                     Layout.alignment: Qt.AlignHCenter
                     width: 64; height: 64; radius: 32
-                    color: root.avatarColorForName(root.profileTargetDisplayName || root.profileTargetUsername || "?")
+                    color: root.avatarBackgroundColor(
+                               root.profileTargetAvatar,
+                               root.profileTargetDisplayName || root.profileTargetUsername || "?")
                     layer.enabled: true
                     Label {
                         anchors.centerIn: parent
@@ -1260,6 +1298,9 @@ Item {
                         visible: root.profileTargetAvatar && root.profileTargetAvatar.length > 0
                         source: root.avatarImageSource(root.profileTargetAvatar)
                         fillMode: Image.PreserveAspectCrop
+                        sourceSize: Qt.size(root.avatarRenderSize, root.avatarRenderSize)
+                        smooth: true
+                        mipmap: true
                         asynchronous: true; cache: true
                     }
                 }
@@ -1286,83 +1327,133 @@ Item {
         }
     }
 
+    PresetAvatarPopup {
+        id: presetAvatarPopup
+        onAvatarConfirmed: function(url) {
+            root.settingsAvatarUrl = url
+        }
+    }
+
     Dialog {
         id: settingsDialog
         title: qsTr("Profile settings")
         anchors.centerIn: parent
         modal: true
         width: 360
+        height: Math.min(460, root.height - 60)
         standardButtons: Dialog.Cancel | Dialog.Ok
         onAccepted: root.saveProfile()
-        contentItem: Item {
-            implicitWidth: 360
-            implicitHeight: 340
-            ColumnLayout {
-                anchors.fill: parent
-                anchors.margins: 12
-                spacing: 10
-                Rectangle {
-                    id: settingsAvatarContainer
-                    Layout.alignment: Qt.AlignHCenter
-                    width: 72; height: 72; radius: 36
-                    color: root.avatarColorForName(root.settingsDisplayName || root.currentUserDisplayName || "?")
-                    layer.enabled: true
-                    Label {
-                        anchors.centerIn: parent
-                        visible: !(root.settingsAvatarUrl && root.settingsAvatarUrl.length > 0)
-                        text: root.avatarInitial(root.settingsDisplayName || root.currentUserDisplayName)
-                        color: Theme.textPrimary; font.bold: true; font.pixelSize: 28
-                    }
-                    Image {
-                        anchors.fill: parent
-                        visible: root.settingsAvatarUrl && root.settingsAvatarUrl.length > 0
-                        source: root.avatarImageSource(root.settingsAvatarUrl)
-                        fillMode: Image.PreserveAspectCrop
-                        asynchronous: true; cache: true
-                    }
+        onRejected: root.revertSettings()
+
+        // contentItem giờ là ScrollView bọc toàn bộ nội dung, không phải Item cố định cao 340px nữa.
+        // => sau này thêm field mới vào contentColumn vẫn luôn cuộn được, không bị cắt mất.
+        contentItem: ScrollView {
+            id: settingsScroll
+            clip: true
+            contentWidth: availableWidth
+            ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
+
+            // Thanh cuộn mảnh, tối giản — đồng bộ với style của message list.
+            // Dùng anchors.right để ép vị trí bên phải (thay vì x tự tính), tránh lỗi scope id.
+            ScrollBar.vertical: ScrollBar {
+                policy: ScrollBar.AsNeeded
+                width: 3
+                anchors.right: parent ? parent.right : undefined
+                anchors.top: parent ? parent.top : undefined
+                anchors.bottom: parent ? parent.bottom : undefined
+                contentItem: Rectangle {
+                    implicitWidth: 3
+                    radius: 1.5
+                    color: Theme.textMuted
+                    opacity: parent.pressed ? 0.8 : 0.4
                 }
-                Button {
-                    text: qsTr("Change avatar")
-                    Layout.fillWidth: true
-                    onClicked: {
-                        var p = chatClient.chooseFile()
-                        if (p && p.length > 0) {
-                            root.avatarUploadPending = true
-                            chatClient.uploadAttachment(p)
+            }
+
+            Item {
+                width: settingsScroll.availableWidth
+                implicitHeight: contentColumn.implicitHeight + 24
+
+                ColumnLayout {
+                    id: contentColumn
+                    anchors.fill: parent
+                    anchors.margins: 12
+                    spacing: 10
+
+                    Rectangle {
+                        id: settingsAvatarContainer
+                        Layout.alignment: Qt.AlignHCenter
+                        width: 72; height: 72; radius: 36
+                        color: root.avatarBackgroundColor(
+                                   root.settingsAvatarUrl,
+                                   root.settingsDisplayName || root.currentUserDisplayName)
+                        layer.enabled: true
+                        Label {
+                            anchors.centerIn: parent
+                            visible: !(root.settingsAvatarUrl && root.settingsAvatarUrl.length > 0)
+                            text: root.avatarInitial(root.settingsDisplayName || root.currentUserDisplayName)
+                            color: Theme.textPrimary; font.bold: true; font.pixelSize: 28
+                        }
+                        Image {
+                            anchors.fill: parent
+                            anchors.margins: root.avatarImageMargins(parent.width, root.settingsAvatarUrl)
+                            visible: root.settingsAvatarUrl && root.settingsAvatarUrl.length > 0
+                            source: root.avatarImageSource(root.settingsAvatarUrl)
+                            fillMode: PresetAvatars.isPresetUrl(root.settingsAvatarUrl)
+                                      ? Image.PreserveAspectFit
+                                      : Image.PreserveAspectCrop
+                            sourceSize: Qt.size(root.avatarRenderSize, root.avatarRenderSize)
+                            smooth: true
+                            mipmap: true
+                            asynchronous: true; cache: true
                         }
                     }
-                }
-                TextField {
-                    id: profileDisplayName
-                    Layout.fillWidth: true
-                    text: root.settingsDisplayName
-                    placeholderText: qsTr("Display name")
-                    onTextChanged: root.settingsDisplayName = text
-                }
-
-                /* =====================Lỗi không lướt xuống đc trong userprofile=================================== 
-                TextArea {
-                    id: profileBio
-                    Layout.fillWidth: true
-                    Layout.preferredHeight: 90
-                    wrapMode: TextEdit.Wrap
-                    text: root.settingsBio
-                    placeholderText: qsTr("Bio")
-                    onTextChanged: root.settingsBio = text
-                }
-                ========================================================== */
-
-                ScrollView {
-                    Layout.fillWidth: true
-                    Layout.preferredHeight: 90
-                    TextArea {
-                        id: profileBio
-                        width: parent.width
-                        wrapMode: TextEdit.Wrap
-                        text: root.settingsBio
-                        placeholderText: qsTr("Bio")
-                        onTextChanged: root.settingsBio = text
+                    Button {
+                        text: qsTr("Change avatar")
+                        Layout.fillWidth: true
+                        onClicked: {
+                            var p = chatClient.chooseFile()
+                            if (p && p.length > 0) {
+                                root.avatarUploadPending = true
+                                chatClient.uploadAttachment(p)
+                            }
+                        }
                     }
+                    Button {
+                        text: qsTr("Choose preset")
+                        Layout.fillWidth: true
+                        onClicked: presetAvatarPopup.open()
+                    }
+                    TextField {
+                        id: profileDisplayName
+                        Layout.fillWidth: true
+                        text: root.settingsDisplayName
+                        placeholderText: qsTr("Display name")
+                        onTextChanged: root.settingsDisplayName = text
+                    }
+
+                    // Ô Bio vẫn giữ ScrollView riêng để cuộn mượt trong khung 90px cố định của nó,
+                    // độc lập với ScrollView ngoài cùng bọc cả dialog.
+                    ScrollView {
+                        id: bioScrollView
+                        Layout.fillWidth: true
+                        Layout.preferredHeight: 90
+                        clip: true
+                        ScrollBar.vertical: ScrollBar {
+                            policy: ScrollBar.AlwaysOff
+                        }
+                        TextArea {
+                            id: profileBio
+                            width: parent.width
+                            wrapMode: TextEdit.Wrap
+                            text: root.settingsBio
+                            placeholderText: qsTr("Bio")
+                            onTextChanged: root.settingsBio = text
+                        }
+                    }
+
+                    // ── Thêm field mới ở đây trong tương lai ──
+                    // Nhờ ScrollView bọc ngoài (settingsScroll), field mới luôn cuộn tới được,
+                    // kể cả khi tổng chiều cao nội dung vượt quá height của dialog.
                 }
             }
         }
