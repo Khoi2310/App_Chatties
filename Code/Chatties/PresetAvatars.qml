@@ -25,7 +25,10 @@ QtObject {
         { file: "Main.png",    backgroundColor: "#e6e7e5" },
         { file: "Clara.png",   backgroundColor: "#fdde79" },
         { file: "DanHeng.png", backgroundColor: "#b1fda1" },
-        { file: "Kafka.png",   backgroundColor: "#c39afa" }
+        { file: "Kafka.png",   backgroundColor: "#c39afa" },
+        { file: "Himeko.png,   backgroundColor: "#f79d82" },
+        { file: "Firefly.png,   backgroundColor: "#97f1d3" },
+        { file: "Herta.png,   backgroundColor: "#97a5f1" }
     ]
 
     function imageUrl(fileName) {
