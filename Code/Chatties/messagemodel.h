@@ -22,7 +22,8 @@ public:
         DeletedRole,
         ReactionsRole,
         AttachmentsRole,
-        AvatarUrlRole
+        AvatarUrlRole,
+        ForwardedFromRole
     };
 
     struct Item {
@@ -39,6 +40,7 @@ public:
         QVariantList reactions;    // [{emoji, count}]
         QVariantList attachments;  // [{url, kind, filename, size}]
         QString avatarUrl;
+        QString forwardedFrom;     // tên tác giả gốc nếu là tin chuyển tiếp
     };
 
     explicit MessageModel(QObject* parent = nullptr);

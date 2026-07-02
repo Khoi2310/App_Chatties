@@ -360,6 +360,12 @@ void ChatClient::requestMembers(int serverId) {
     QJsonObject data; data["server_id"] = serverId;
     sendOp("members.list", data);
 }
+void ChatClient::forwardMessage(int messageId, int targetChannelId) {
+    QJsonObject data;
+    data["message_id"]        = messageId;
+    data["target_channel_id"] = targetChannelId;
+    sendOp("message.forward", data);
+}
 
 void ChatClient::onConnected() {
     reconnectTimer_->stop();         // đã kết nối, ngừng thử lại

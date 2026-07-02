@@ -84,6 +84,8 @@ void Database::run_migrations() {
         "CREATE INDEX IF NOT EXISTS idx_messages_channel "
         "ON messages(channel_id, id)"
     );
+    // [Forward] Tên tác giả gốc nếu tin này được chuyển tiếp.
+    ensure_column(db_, "messages", "forwarded_from", "TEXT");
 
     db_.exec(
         "CREATE TABLE IF NOT EXISTS reactions ("
@@ -420,6 +422,36 @@ uint32_t Database::message_channel(uint32_t message_id) {
     return 0;
 }
 
+std::optional<MessageRecord> Database::message_by_id(uint32_t message_id) {
+    SQLite::Statement q(db_,
+        "SELECT m.id, m.channel_id, m.author_id, u.username, u.avatar_url, "
+        "       m.content, m.created_at, m.deleted, m.forwarded_from "
+        "FROM messages m JOIN users u ON u.id = m.author_id "
+        "WHERE m.id = ?");
+    q.bind(1, message_id);
+    if (!q.executeStep()) return std::nullopt;
+    MessageRecord rec;
+    rec.id             = q.getColumn(0).getUInt();
+    rec.channel_id     = q.getColumn(1).getUInt();
+    rec.author_id      = q.getColumn(2).getUInt();
+    rec.author_name    = q.getColumn(3).getString();
+    rec.avatar_url     = q.getColumn(4).isNull() ? std::string() : q.getColumn(4).getString();
+    rec.content        = q.getColumn(5).getString();
+    rec.created_at     = q.getColumn(6).getUInt();
+    rec.deleted        = q.getColumn(7).getInt() != 0;
+    rec.forwarded_from = q.getColumn(8).isNull() ? std::string() : q.getColumn(8).getString();
+    if (!rec.deleted) rec.attachments = attachments_for(rec.id);
+    return rec;
+}
+
+void Database::set_forwarded_from(uint32_t message_id, const std::string& name) {
+    std::lock_guard<std::mutex> lock(db_mutex_);
+    SQLite::Statement q(db_, "UPDATE messages SET forwarded_from = ? WHERE id = ?");
+    q.bind(1, name);
+    q.bind(2, message_id);
+    q.exec();
+}
+
 std::vector<MessageRecord> Database::recent_messages(uint32_t channel_id, int limit) {
     std::vector<MessageRecord> result;
 
@@ -427,7 +459,8 @@ std::vector<MessageRecord> Database::recent_messages(uint32_t channel_id, int li
         "SELECT m.id, m.channel_id, m.author_id, u.username, u.avatar_url, m.content, m.created_at, "
         "       m.edited_at, m.deleted, "
         "       m.reply_to_id, ru.username, rm.content, rm.deleted, "
-        "       (SELECT COUNT(*) FROM attachments a WHERE a.message_id = rm.id) "
+        "       (SELECT COUNT(*) FROM attachments a WHERE a.message_id = rm.id), "
+        "       m.forwarded_from "
         "FROM messages m "
         "JOIN users u ON u.id = m.author_id "
         "LEFT JOIN messages rm ON rm.id = m.reply_to_id "
@@ -461,6 +494,8 @@ std::vector<MessageRecord> Database::recent_messages(uint32_t channel_id, int li
             else if (reply_att > 0)          rec.reply_excerpt = "[attachment]";
             else                             rec.reply_excerpt = "";
         }
+        rec.forwarded_from = q.getColumn(14).isNull()
+            ? std::string() : q.getColumn(14).getString();
         result.push_back(std::move(rec));
     }
 

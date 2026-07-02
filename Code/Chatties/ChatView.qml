@@ -38,6 +38,26 @@ Item {
     property int  mentionTokenStart: -1  // vị trí ký tự '@' trong ô nhập; -1 = không có
     property int  mentionIndex: 0     // mục đang chọn trong danh sách gợi ý
 
+    // [Forward] Chuyển tiếp tin nhắn
+    property int  forwardMsgId: 0     // tin đang được chuyển tiếp
+    // Danh sách đích = mọi channel của các server + các DM (tự cập nhật).
+    property var  forwardTargetList: {
+        var out = []
+        for (var i = 0; i < root.servers.length; i++) {
+            var s = root.servers[i]
+            for (var j = 0; j < s.channels.length; j++)
+                out.push({ "channel_id": s.channels[j].id,
+                           "label": s.name + "   # " + s.channels[j].name })
+        }
+        for (var k = 0; k < root.dms.length; k++) {
+            var d = root.dms[k]
+            out.push({ "channel_id": d.channel_id,
+                       "label": "@ " + ((d.display_name && d.display_name.length > 0)
+                                        ? d.display_name : d.username) })
+        }
+        return out
+    }
+
     // BỔ SUNG: Từ điển lưu trữ ánh xạ giữa Shortcode và Link thật của Custom Emoji
     property var customEmojiDictionary: ({})
 
@@ -1282,6 +1302,16 @@ Item {
                                     font.pixelSize: 11
                                 }
                             }
+                            // [Forward] Nhãn "Forwarded from X"
+                            Label {
+                                anchors.left: parent.left
+                                anchors.leftMargin: 8
+                                visible: (model.forwardedFrom || "").length > 0 && !model.deleted
+                                text: "↪ " + qsTr("Forwarded from ") + (model.forwardedFrom || "")
+                                color: Theme.textMuted
+                                font.pixelSize: 11
+                                font.italic: true
+                            }
                             Label {
                                 id: msgTextLabel
                                 anchors.left: parent.left
@@ -1715,6 +1745,36 @@ Item {
                                                 chatClient.unpinMessage(root.currentChannelId, msgItem.mId)
                                             else
                                                 chatClient.pinMessage(root.currentChannelId, msgItem.mId)
+                                        }
+                                    }
+                                }
+                                // [Forward] Forward
+                                Rectangle {
+                                    width: parent.width; height: 34; radius: 4
+                                    color: fwdArea.containsMouse ? Theme.accent : "transparent"
+                                    Row {
+                                        anchors.fill: parent
+                                        anchors.leftMargin: 10; anchors.rightMargin: 10
+                                        Label {
+                                            text: qsTr("Forward")
+                                            color: Theme.textPrimary
+                                            anchors.verticalCenter: parent.verticalCenter
+                                            width: parent.width - 24
+                                        }
+                                        Label {
+                                            text: "↪"; font.pixelSize: 16
+                                            anchors.verticalCenter: parent.verticalCenter
+                                        }
+                                    }
+                                    MouseArea {
+                                        id: fwdArea
+                                        anchors.fill: parent; hoverEnabled: true
+                                        cursorShape: Qt.PointingHandCursor
+                                        onClicked: {
+                                            actionMenu.close()
+                                            root.forwardMsgId = msgItem.mId
+                                            chatClient.requestDmList()   // đảm bảo có DM trong đích
+                                            forwardDialog.open()
                                         }
                                     }
                                 }
@@ -2754,6 +2814,57 @@ Item {
                 id: newChannelName
                 Layout.fillWidth: true
                 placeholderText: qsTr("Channel name")
+            }
+        }
+    }
+
+    // [Forward] Dialog chọn đích chuyển tiếp
+    Dialog {
+        id: forwardDialog
+        title: qsTr("Forward to…")
+        anchors.centerIn: parent
+        modal: true
+        width: 360
+        height: 420
+        standardButtons: Dialog.Cancel
+        contentItem: ColumnLayout {
+            spacing: 8
+            Label {
+                text: qsTr("Choose a channel or DM")
+                color: Theme.textMuted
+                font.pixelSize: 12
+            }
+            ListView {
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                clip: true
+                model: root.forwardTargetList
+                spacing: 2
+                delegate: Rectangle {
+                    width: ListView.view ? ListView.view.width : 0
+                    height: 36
+                    radius: 6
+                    color: fwdRowArea.containsMouse ? Theme.inputBg : "transparent"
+                    Label {
+                        anchors.left: parent.left; anchors.leftMargin: 10
+                        anchors.right: parent.right; anchors.rightMargin: 10
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: modelData.label
+                        color: Theme.textPrimary
+                        elide: Text.ElideRight
+                    }
+                    MouseArea {
+                        id: fwdRowArea
+                        anchors.fill: parent; hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: {
+                            if (root.forwardMsgId !== 0)
+                                chatClient.forwardMessage(root.forwardMsgId, modelData.channel_id)
+                            root.forwardMsgId = 0
+                            forwardDialog.close()
+                        }
+                    }
+                }
             }
         }
     }

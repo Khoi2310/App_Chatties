@@ -67,6 +67,7 @@ public:
     Q_INVOKABLE void unpinMessage(int channelId, int messageId);
     Q_INVOKABLE void requestPins(int channelId);
     Q_INVOKABLE void requestMembers(int serverId);   // [Polish] cho @-autocomplete
+    Q_INVOKABLE void forwardMessage(int messageId, int targetChannelId);  // [Forward]
     Q_INVOKABLE qint64 getLocalFileSize(const QString& localPathOrUrl);
     Q_INVOKABLE void deleteCustomEmoji(int serverId, const QString& shortcode);
     Q_INVOKABLE void renameCustomEmoji(int serverId, const QString& oldShortcode,
