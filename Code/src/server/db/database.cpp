@@ -147,6 +147,53 @@ void Database::run_migrations() {
         "CREATE INDEX IF NOT EXISTS idx_attachments_msg "
         "ON attachments(message_id)"
     );
+
+    // [M6] Ai được nhắc (@mention) trong 1 tin nhắn.
+    db_.exec(
+        "CREATE TABLE IF NOT EXISTS mentions ("
+        "  message_id INTEGER NOT NULL,"
+        "  user_id    INTEGER NOT NULL,"
+        "  PRIMARY KEY (message_id, user_id)"
+        ")"
+    );
+    db_.exec(
+        "CREATE INDEX IF NOT EXISTS idx_mentions_user "
+        "ON mentions(user_id)"
+    );
+
+    // [M6] Tin nhắn cuối cùng mỗi user đã đọc trong mỗi channel.
+    db_.exec(
+        "CREATE TABLE IF NOT EXISTS channel_reads ("
+        "  user_id          INTEGER NOT NULL,"
+        "  channel_id       INTEGER NOT NULL,"
+        "  last_read_msg_id INTEGER NOT NULL DEFAULT 0,"
+        "  PRIMARY KEY (user_id, channel_id)"
+        ")"
+    );
+
+    // [M6-6B] Quan hệ bạn bè. user_a luôn là id nhỏ hơn để (a,b) là duy nhất.
+    db_.exec(
+        "CREATE TABLE IF NOT EXISTS friendships ("
+        "  user_a       INTEGER NOT NULL,"
+        "  user_b       INTEGER NOT NULL,"
+        "  status       TEXT NOT NULL,"          // 'pending' | 'accepted'
+        "  requested_by INTEGER NOT NULL,"
+        "  created_at   INTEGER NOT NULL,"
+        "  PRIMARY KEY (user_a, user_b)"
+        ")"
+    );
+
+    // [M6-6B] Thành viên của 1 kênh DM (kênh có server_id = 0).
+    db_.exec(
+        "CREATE TABLE IF NOT EXISTS dm_participants ("
+        "  channel_id INTEGER NOT NULL,"
+        "  user_id    INTEGER NOT NULL,"
+        "  PRIMARY KEY (channel_id, user_id)"
+        ")"
+    );
+    db_.exec(
+        "CREATE INDEX IF NOT EXISTS idx_dm_user ON dm_participants(user_id)"
+    );
 }
 
 void Database::seed_defaults() {
@@ -627,27 +674,238 @@ std::vector<CustomEmojiRecord> Database::emojis_for_server(uint32_t server_id) {
     return out;
 }
 
-void Database::delete_custom_emoji(const std::string& shortcode) {
+void Database::delete_custom_emoji(uint32_t server_id, const std::string& shortcode) {
     // Khóa luồng để bảo vệ DB khi ghi dữ liệu
     std::lock_guard<std::mutex> lock(db_mutex_);
-    
-    SQLite::Statement q(db_, "DELETE FROM custom_emojis WHERE shortcode = ?");
-    q.bind(1, shortcode);
+
+    // Chỉ xóa emoji của đúng server này (emoji theo từng server).
+    SQLite::Statement q(db_,
+        "DELETE FROM custom_emojis WHERE server_id = ? AND shortcode = ?");
+    q.bind(1, server_id);
+    q.bind(2, shortcode);
     q.exec();
-    
-    utils::Logger::instance().info("[Database] Đã xóa Emoji: " + shortcode);
-}
-void Database::rename_custom_emoji(const std::string& old_shortcode, const std::string& new_shortcode) {
-    // Khóa luồng để bảo vệ DB khi ghi dữ liệu
-    std::lock_guard<std::mutex> lock(db_mutex_);
-    
-    SQLite::Statement q(db_, "UPDATE custom_emojis SET shortcode = ? WHERE shortcode = ?");
-    q.bind(1, new_shortcode);
-    q.bind(2, old_shortcode);
-    q.exec();
-    
+
     utils::Logger::instance().info(
-        "[Database] Đã đổi tên Emoji: " + old_shortcode + " -> " + new_shortcode);
+        "[Database] Đã xóa Emoji (server " + std::to_string(server_id) + "): " + shortcode);
+}
+void Database::rename_custom_emoji(uint32_t server_id,
+                                   const std::string& old_shortcode,
+                                   const std::string& new_shortcode) {
+    // Khóa luồng để bảo vệ DB khi ghi dữ liệu
+    std::lock_guard<std::mutex> lock(db_mutex_);
+
+    // Chỉ đổi tên emoji của đúng server này.
+    SQLite::Statement q(db_,
+        "UPDATE custom_emojis SET shortcode = ? WHERE server_id = ? AND shortcode = ?");
+    q.bind(1, new_shortcode);
+    q.bind(2, server_id);
+    q.bind(3, old_shortcode);
+    q.exec();
+
+    utils::Logger::instance().info(
+        "[Database] Đã đổi tên Emoji (server " + std::to_string(server_id) + "): "
+        + old_shortcode + " -> " + new_shortcode);
+}
+
+// ─── [M6] Mentions & unread ──────────────────────────────────────
+void Database::add_mention(uint32_t message_id, uint32_t user_id) {
+    std::lock_guard<std::mutex> lock(db_mutex_);
+    SQLite::Statement q(db_,
+        "INSERT OR IGNORE INTO mentions (message_id, user_id) VALUES (?, ?)");
+    q.bind(1, message_id);
+    q.bind(2, user_id);
+    q.exec();
+}
+
+std::optional<uint32_t> Database::resolve_member(uint32_t server_id,
+                                                 const std::string& username) {
+    SQLite::Statement q(db_,
+        "SELECT u.id FROM users u "
+        "JOIN server_members sm ON sm.user_id = u.id "
+        "WHERE sm.server_id = ? AND lower(u.username) = lower(?) LIMIT 1");
+    q.bind(1, server_id);
+    q.bind(2, username);
+    if (q.executeStep())
+        return static_cast<uint32_t>(q.getColumn(0).getInt64());
+    return std::nullopt;
+}
+
+void Database::mark_channel_read(uint32_t user_id, uint32_t channel_id,
+                                 uint32_t last_read_msg_id) {
+    std::lock_guard<std::mutex> lock(db_mutex_);
+    SQLite::Statement q(db_,
+        "INSERT INTO channel_reads (user_id, channel_id, last_read_msg_id) "
+        "VALUES (?, ?, ?) "
+        "ON CONFLICT(user_id, channel_id) DO UPDATE SET "
+        "last_read_msg_id = MAX(last_read_msg_id, excluded.last_read_msg_id)");
+    q.bind(1, user_id);
+    q.bind(2, channel_id);
+    q.bind(3, last_read_msg_id);
+    q.exec();
+}
+
+std::vector<UnreadInfo> Database::unread_counts(uint32_t user_id) {
+    std::vector<UnreadInfo> out;
+    // Mỗi channel thuộc server user là thành viên:
+    //   unread   = số tin (không phải của mình) có id > last_read.
+    //   mentions = trong số đó, bao nhiêu tin nhắc tới user.
+    SQLite::Statement q(db_,
+        "SELECT c.id, "
+        "  (SELECT COUNT(*) FROM messages m "
+        "     WHERE m.channel_id = c.id AND m.deleted = 0 AND m.author_id != ? "
+        "       AND m.id > COALESCE(cr.last_read_msg_id, 0)), "
+        "  (SELECT COUNT(*) FROM messages m "
+        "     JOIN mentions mn ON mn.message_id = m.id "
+        "     WHERE m.channel_id = c.id AND m.deleted = 0 AND mn.user_id = ? "
+        "       AND m.id > COALESCE(cr.last_read_msg_id, 0)) "
+        "FROM channels c "
+        "JOIN server_members sm ON sm.server_id = c.server_id AND sm.user_id = ? "
+        "LEFT JOIN channel_reads cr ON cr.channel_id = c.id AND cr.user_id = ?");
+    q.bind(1, user_id);
+    q.bind(2, user_id);
+    q.bind(3, user_id);
+    q.bind(4, user_id);
+    while (q.executeStep()) {
+        UnreadInfo u;
+        u.channel_id = static_cast<uint32_t>(q.getColumn(0).getInt64());
+        u.unread     = static_cast<uint32_t>(q.getColumn(1).getInt64());
+        u.mentions   = static_cast<uint32_t>(q.getColumn(2).getInt64());
+        out.push_back(u);
+    }
+    return out;
+}
+
+// ─── [M6-6B] Bạn bè & DM ─────────────────────────────────────────
+bool Database::send_friend_request(uint32_t from_id, uint32_t to_id) {
+    if (from_id == to_id || to_id == 0) return false;
+    std::lock_guard<std::mutex> lock(db_mutex_);
+    uint32_t a = std::min(from_id, to_id);
+    uint32_t b = std::max(from_id, to_id);
+    SQLite::Statement q(db_,
+        "INSERT OR IGNORE INTO friendships "
+        "(user_a, user_b, status, requested_by, created_at) "
+        "VALUES (?, ?, 'pending', ?, strftime('%s','now'))");
+    q.bind(1, a);
+    q.bind(2, b);
+    q.bind(3, from_id);
+    q.exec();
+    return true;
+}
+
+bool Database::accept_friend_request(uint32_t me, uint32_t other) {
+    std::lock_guard<std::mutex> lock(db_mutex_);
+    uint32_t a = std::min(me, other);
+    uint32_t b = std::max(me, other);
+    // Chỉ chấp nhận lời mời do NGƯỜI KHÁC gửi tới mình.
+    SQLite::Statement q(db_,
+        "UPDATE friendships SET status = 'accepted' "
+        "WHERE user_a = ? AND user_b = ? AND status = 'pending' AND requested_by != ?");
+    q.bind(1, a);
+    q.bind(2, b);
+    q.bind(3, me);
+    q.exec();
+    return db_.getChanges() > 0;
+}
+
+void Database::remove_friend(uint32_t me, uint32_t other) {
+    std::lock_guard<std::mutex> lock(db_mutex_);
+    uint32_t a = std::min(me, other);
+    uint32_t b = std::max(me, other);
+    SQLite::Statement q(db_,
+        "DELETE FROM friendships WHERE user_a = ? AND user_b = ?");
+    q.bind(1, a);
+    q.bind(2, b);
+    q.exec();
+}
+
+std::vector<FriendRecord> Database::friends_of(uint32_t user_id) {
+    std::vector<FriendRecord> out;
+    SQLite::Statement q(db_,
+        "SELECT u.id, u.username, u.display_name, u.avatar_url, f.status, f.requested_by "
+        "FROM friendships f "
+        "JOIN users u ON u.id = (CASE WHEN f.user_a = ?1 THEN f.user_b ELSE f.user_a END) "
+        "WHERE f.user_a = ?1 OR f.user_b = ?1");
+    q.bind(1, user_id);
+    while (q.executeStep()) {
+        FriendRecord r;
+        r.user_id      = q.getColumn(0).getUInt();
+        r.username     = q.getColumn(1).getString();
+        r.display_name = q.getColumn(2).isNull() ? std::string() : q.getColumn(2).getString();
+        r.avatar_url   = q.getColumn(3).isNull() ? std::string() : q.getColumn(3).getString();
+        r.status       = q.getColumn(4).getString();
+        uint32_t requested_by = q.getColumn(5).getUInt();
+        r.incoming = (r.status == "pending" && requested_by != user_id);
+        out.push_back(std::move(r));
+    }
+    return out;
+}
+
+uint32_t Database::open_dm(uint32_t a, uint32_t b) {
+    // Tìm kênh DM đã có giữa a và b.
+    {
+        SQLite::Statement q(db_,
+            "SELECT dp1.channel_id FROM dm_participants dp1 "
+            "JOIN dm_participants dp2 ON dp1.channel_id = dp2.channel_id "
+            "WHERE dp1.user_id = ? AND dp2.user_id = ? LIMIT 1");
+        q.bind(1, a);
+        q.bind(2, b);
+        if (q.executeStep())
+            return q.getColumn(0).getUInt();
+    }
+    // Chưa có → tạo kênh server_id = 0 (create_channel tự khóa mutex).
+    uint32_t ch = create_channel(0, "dm");
+    {
+        std::lock_guard<std::mutex> lock(db_mutex_);
+        for (uint32_t uid : { a, b }) {
+            SQLite::Statement q(db_,
+                "INSERT OR IGNORE INTO dm_participants (channel_id, user_id) VALUES (?, ?)");
+            q.bind(1, ch);
+            q.bind(2, uid);
+            q.exec();
+        }
+    }
+    return ch;
+}
+
+std::vector<DmRecord> Database::dm_channels_for(uint32_t user_id) {
+    std::vector<DmRecord> out;
+    SQLite::Statement q(db_,
+        "SELECT dp2.channel_id, u.id, u.username, u.display_name, u.avatar_url "
+        "FROM dm_participants dp1 "
+        "JOIN dm_participants dp2 ON dp1.channel_id = dp2.channel_id "
+        "  AND dp2.user_id != dp1.user_id "
+        "JOIN users u ON u.id = dp2.user_id "
+        "WHERE dp1.user_id = ? "
+        "ORDER BY dp2.channel_id DESC");
+    q.bind(1, user_id);
+    while (q.executeStep()) {
+        DmRecord r;
+        r.channel_id         = q.getColumn(0).getUInt();
+        r.other_id           = q.getColumn(1).getUInt();
+        r.other_username     = q.getColumn(2).getString();
+        r.other_display_name = q.getColumn(3).isNull() ? std::string() : q.getColumn(3).getString();
+        r.other_avatar_url   = q.getColumn(4).isNull() ? std::string() : q.getColumn(4).getString();
+        out.push_back(std::move(r));
+    }
+    return out;
+}
+
+bool Database::is_dm_participant(uint32_t user_id, uint32_t channel_id) {
+    SQLite::Statement q(db_,
+        "SELECT 1 FROM dm_participants WHERE user_id = ? AND channel_id = ?");
+    q.bind(1, user_id);
+    q.bind(2, channel_id);
+    return q.executeStep();
+}
+
+std::unordered_set<uint32_t> Database::dm_participant_ids(uint32_t channel_id) {
+    std::unordered_set<uint32_t> out;
+    SQLite::Statement q(db_,
+        "SELECT user_id FROM dm_participants WHERE channel_id = ?");
+    q.bind(1, channel_id);
+    while (q.executeStep())
+        out.insert(q.getColumn(0).getUInt());
+    return out;
 }
 
 } // namespace db

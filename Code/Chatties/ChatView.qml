@@ -12,6 +12,17 @@ Item {
     property int currentServerIndex: 0
     property int currentChannelId: 0
 
+    // [M6] username hiện tại (để tô đậm @mention chính mình).
+    property string currentUsername: ""
+    // [M6] unread/mention theo channelId: { channelId: {unread, mentions} }
+    property var unreadMap: ({})
+
+    // [M6-6B] Chế độ tin nhắn riêng (DM) / bạn bè.
+    property bool dmMode: false
+    property var  friends: []
+    property var  dms: []
+    property var  dmOtherUser: ({})
+
     // BỔ SUNG: Từ điển lưu trữ ánh xạ giữa Shortcode và Link thật của Custom Emoji
     property var customEmojiDictionary: ({})
 
@@ -207,6 +218,16 @@ Item {
     function selectChannel(id) {
         currentChannelId = id
         chatClient.selectChannel(id)
+        root.clearUnreadLocal(id)   // [M6] xóa badge ngay
+    }
+
+    // [M6] Xóa unread/mention của 1 channel khỏi bản đồ (reassign để cập nhật UI).
+    function clearUnreadLocal(id) {
+        if (root.unreadMap[id] !== undefined) {
+            var m = Object.assign({}, root.unreadMap)
+            delete m[id]
+            root.unreadMap = m
+        }
     }
 
     function avatarColorForName(name) {
@@ -297,10 +318,19 @@ Item {
     }
 
     function selectServer(idx) {
+        root.dmMode = false          // [M6-6B] rời chế độ DM khi chọn server
         currentServerIndex = idx
         currentChannelId = 0
         if (servers[idx].channels.length > 0)
             selectChannel(servers[idx].channels[0].id)
+    }
+
+    // [M6-6B] Vào chế độ DM: nạp danh sách bạn bè + DM.
+    function enterDmMode() {
+        root.dmMode = true
+        currentChannelId = 0
+        chatClient.requestFriends()
+        chatClient.requestDmList()
     }
 
     // Reset trạng thái khi đăng xuất (visible = false).
@@ -382,6 +412,32 @@ Item {
                     }
                 }
                 ================================================================= */
+
+                // [M6-6B] Nút Direct Messages (Home)
+                Item {
+                    Layout.preferredWidth: 56
+                    Layout.preferredHeight: 56
+                    Layout.alignment: Qt.AlignHCenter
+                    width: 56; height: 56
+                    Rectangle {
+                        anchors.centerIn: parent
+                        width: 48; height: 48; radius: 24
+                        color: root.dmMode ? Theme.accent : Theme.inputBg
+                        Label { anchors.centerIn: parent; text: "💬"; font.pixelSize: 22 }
+                        MouseArea {
+                            anchors.fill: parent
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: root.enterDmMode()
+                        }
+                    }
+                }
+                Rectangle {
+                    Layout.preferredWidth: 32
+                    Layout.preferredHeight: 2
+                    Layout.alignment: Qt.AlignHCenter
+                    color: Theme.inputBg
+                    radius: 1
+                }
 
                 Repeater {
                     model: root.servers
@@ -531,6 +587,7 @@ Item {
 
                 RowLayout {
                     Layout.fillWidth: true
+                    visible: !root.dmMode
                     Label {
                         Layout.fillWidth: true
                         text: root.servers.length > 0 ? root.servers[root.currentServerIndex].name : ""
@@ -549,24 +606,208 @@ Item {
                     Layout.fillWidth: true
                     Layout.fillHeight: true
                     clip: true
+                    visible: !root.dmMode
                     model: root.currentChannels
                     spacing: 2
                     delegate: Rectangle {
+                        id: chRow
                         width: ListView.view ? ListView.view.width : 0
                         height: 30
                         radius: Theme.radius
                         color: modelData.id === root.currentChannelId ? Theme.accent : "transparent"
+                        property var unread: root.unreadMap[modelData.id]
+                        property bool showBadge: unread !== undefined
+                                                 && modelData.id !== root.currentChannelId
                         Label {
                             anchors.verticalCenter: parent.verticalCenter
                             anchors.left: parent.left
                             anchors.leftMargin: 8
+                            anchors.right: chBadge.left
+                            anchors.rightMargin: 4
+                            elide: Text.ElideRight
                             text: "# " + modelData.name
                             color: Theme.textPrimary
+                            font.bold: chRow.showBadge
+                        }
+                        Rectangle {
+                            id: chBadge
+                            anchors.verticalCenter: parent.verticalCenter
+                            anchors.right: parent.right
+                            anchors.rightMargin: 8
+                            property bool hasMention: chRow.unread !== undefined && chRow.unread.mentions > 0
+                            visible: chRow.showBadge
+                            width: hasMention ? Math.max(16, chBadgeLabel.implicitWidth + 8) : 8
+                            height: hasMention ? 16 : 8
+                            radius: height / 2
+                            color: hasMention ? Theme.danger : Theme.textMuted
+                            Label {
+                                id: chBadgeLabel
+                                anchors.centerIn: parent
+                                visible: chBadge.hasMention
+                                text: chRow.unread ? chRow.unread.mentions : ""
+                                color: "white"
+                                font.pixelSize: 10
+                                font.bold: true
+                            }
                         }
                         MouseArea {
                             anchors.fill: parent
                             cursorShape: Qt.PointingHandCursor
                             onClicked: root.selectChannel(modelData.id)
+                        }
+                    }
+                }
+
+                // [M6-6B] Bảng Direct Messages (hiện khi dmMode)
+                ColumnLayout {
+                    visible: root.dmMode
+                    Layout.fillWidth: true
+                    Layout.fillHeight: true
+                    spacing: 6
+
+                    Label {
+                        text: qsTr("Direct Messages")
+                        color: Theme.textPrimary
+                        font.bold: true
+                    }
+
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: 4
+                        TextField {
+                            id: addFriendField
+                            Layout.fillWidth: true
+                            placeholderText: qsTr("Add friend by username")
+                            color: Theme.textPrimary
+                            background: Rectangle { color: Theme.inputBg; radius: 4 }
+                            onAccepted: {
+                                var u = text.trim()
+                                if (u.length > 0) { chatClient.sendFriendRequest(u); text = "" }
+                            }
+                        }
+                        Button {
+                            text: "+"
+                            onClicked: {
+                                var u = addFriendField.text.trim()
+                                if (u.length > 0) { chatClient.sendFriendRequest(u); addFriendField.text = "" }
+                            }
+                        }
+                    }
+
+                    Label {
+                        text: qsTr("Friends")
+                        color: Theme.textMuted
+                        font.pixelSize: 11
+                        visible: root.friends.length > 0
+                    }
+                    ListView {
+                        Layout.fillWidth: true
+                        Layout.preferredHeight: Math.min(contentHeight, 180)
+                        clip: true
+                        model: root.friends
+                        spacing: 2
+                        delegate: Rectangle {
+                            width: ListView.view ? ListView.view.width : 0
+                            height: 34
+                            radius: Theme.radius
+                            color: friendArea.containsMouse ? Theme.inputBg : "transparent"
+                            MouseArea {
+                                id: friendArea
+                                anchors.fill: parent
+                                hoverEnabled: true
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: {
+                                    if (modelData.status === "accepted")
+                                        chatClient.openDm(modelData.user_id)
+                                }
+                            }
+                            RowLayout {
+                                anchors.fill: parent
+                                anchors.leftMargin: 8
+                                anchors.rightMargin: 6
+                                spacing: 4
+                                Label {
+                                    Layout.fillWidth: true
+                                    text: (modelData.display_name && modelData.display_name.length > 0
+                                           ? modelData.display_name : modelData.username)
+                                          + (modelData.status === "pending"
+                                             ? (modelData.incoming ? "  • wants to add you" : "  • pending")
+                                             : "")
+                                    color: Theme.textPrimary
+                                    elide: Text.ElideRight
+                                }
+                                Button {
+                                    text: qsTr("Accept")
+                                    visible: modelData.incoming === true
+                                    onClicked: chatClient.acceptFriend(modelData.user_id)
+                                }
+                                Label {
+                                    text: "✕"
+                                    color: Theme.textMuted
+                                    MouseArea {
+                                        anchors.fill: parent
+                                        anchors.margins: -6
+                                        cursorShape: Qt.PointingHandCursor
+                                        onClicked: chatClient.removeFriend(modelData.user_id)
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; color: Theme.inputBg }
+
+                    Label {
+                        text: qsTr("Conversations")
+                        color: Theme.textMuted
+                        font.pixelSize: 11
+                    }
+                    ListView {
+                        Layout.fillWidth: true
+                        Layout.fillHeight: true
+                        clip: true
+                        model: root.dms
+                        spacing: 2
+                        delegate: Rectangle {
+                            id: dmRow
+                            width: ListView.view ? ListView.view.width : 0
+                            height: 34
+                            radius: Theme.radius
+                            property var unread: root.unreadMap[modelData.channel_id]
+                            property bool active: modelData.channel_id === root.currentChannelId
+                            color: active ? Theme.accent
+                                          : (dmArea.containsMouse ? Theme.inputBg : "transparent")
+                            Label {
+                                anchors.verticalCenter: parent.verticalCenter
+                                anchors.left: parent.left
+                                anchors.leftMargin: 8
+                                anchors.right: dmBadge.left
+                                anchors.rightMargin: 4
+                                elide: Text.ElideRight
+                                text: "@ " + (modelData.display_name && modelData.display_name.length > 0
+                                              ? modelData.display_name : modelData.username)
+                                color: Theme.textPrimary
+                                font.bold: dmRow.unread !== undefined && !dmRow.active
+                            }
+                            Rectangle {
+                                id: dmBadge
+                                anchors.verticalCenter: parent.verticalCenter
+                                anchors.right: parent.right
+                                anchors.rightMargin: 8
+                                width: 8; height: 8; radius: 4
+                                color: Theme.danger
+                                visible: dmRow.unread !== undefined && !dmRow.active
+                            }
+                            MouseArea {
+                                id: dmArea
+                                anchors.fill: parent
+                                hoverEnabled: true
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: {
+                                    root.dmOtherUser = modelData
+                                    root.selectChannel(modelData.channel_id)
+                                }
+                            }
                         }
                     }
                 }
@@ -1567,9 +1808,34 @@ Item {
                                                 MouseArea {
                                                     anchors.fill: parent
                                                     cursorShape: Qt.PointingHandCursor
-                                                    onClicked: {
-                                                        input.insert(input.cursorPosition, ":" + modelData.shortcode + ":")
-                                                        input.forceActiveFocus()
+                                                    acceptedButtons: Qt.LeftButton | Qt.RightButton
+                                                    // Trái: chèn :shortcode: — Phải: menu đổi tên/xóa.
+                                                    onClicked: (mouse) => {
+                                                        if (mouse.button === Qt.RightButton) {
+                                                            emojiCtxMenu.popup()
+                                                        } else {
+                                                            input.insert(input.cursorPosition, ":" + modelData.shortcode + ":")
+                                                            input.forceActiveFocus()
+                                                        }
+                                                    }
+                                                }
+                                                Menu {
+                                                    id: emojiCtxMenu
+                                                    MenuItem {
+                                                        text: qsTr("Rename")
+                                                        onTriggered: {
+                                                            renameEmojiDialog.oldShortcode = modelData.shortcode
+                                                            renameEmojiField.text = modelData.shortcode
+                                                            emojiPopup.close()
+                                                            renameEmojiDialog.open()
+                                                        }
+                                                    }
+                                                    MenuItem {
+                                                        text: qsTr("Delete")
+                                                        onTriggered: {
+                                                            if (root.currentServerId !== 0)
+                                                                chatClient.deleteCustomEmoji(root.currentServerId, modelData.shortcode)
+                                                        }
                                                     }
                                                 }
                                             }
@@ -1627,6 +1893,33 @@ Item {
         }
     }
 
+    // [M6-6B] Dialog đổi tên custom emoji (theo server hiện tại)
+    Dialog {
+        id: renameEmojiDialog
+        title: qsTr("Rename custom emoji")
+        anchors.centerIn: parent
+        modal: true
+        width: 320
+        padding: 16
+        standardButtons: Dialog.Cancel | Dialog.Ok
+        property string oldShortcode: ""
+        onAccepted: {
+            var sc = renameEmojiField.text.trim()
+            if (sc.length > 0 && sc !== renameEmojiDialog.oldShortcode && root.currentServerId !== 0)
+                chatClient.renameCustomEmoji(root.currentServerId, renameEmojiDialog.oldShortcode, sc)
+            renameEmojiField.text = ""
+            renameEmojiDialog.oldShortcode = ""
+        }
+        contentItem: ColumnLayout {
+            spacing: 8
+            TextField {
+                id: renameEmojiField
+                Layout.fillWidth: true
+                placeholderText: qsTr("new shortcode (e.g. kek)")
+            }
+        }
+    }
+
     // TextEdit ẩn để copy nội dung vào clipboard.
     TextEdit { id: clipHelper; visible: false }
     function copyText(t) {
@@ -1646,12 +1939,23 @@ Item {
 
     // Escape + thay :shortcode: bằng ảnh emoji nếu có trong emojiMap.
     function renderContent(s) {
-        return root.escapeHtml(s).replace(/:([A-Za-z0-9_]+):/g, function(match, code) {
+        var html = root.escapeHtml(s).replace(/:([A-Za-z0-9_]+):/g, function(match, code) {
             var url = root.emojiMap[code]
             return url
                 ? "<img src='" + url + "' width='20' height='20'>"
                 : match
         })
+        // [M6] @mention: @chính-mình / @everyone tô đậm màu nhấn.
+        html = html.replace(/@([A-Za-z0-9_]+)/g, function(match, name) {
+            var me = root.currentUsername
+                     && name.toLowerCase() === root.currentUsername.toLowerCase()
+            var all = (name === "everyone" || name === "here")
+            var color  = (me || all) ? "#5865f2" : "#8a8fd6"
+            var weight = (me || all) ? "bold" : "normal"
+            return "<span style='color:" + color + "; font-weight:" + weight
+                 + ";'>@" + name + "</span>"
+        })
+        return html
     }
 
     function doSend() {
@@ -1676,12 +1980,57 @@ Item {
         target: chatClient
         function onAuthOk(userId, username, displayName, avatarUrl, bio) {
             root.userId = userId
+            root.currentUsername = username || ""
             root.currentUserDisplayName = displayName || username || ""
             root.currentUserAvatar = avatarUrl || ""
             root.currentUserBio = bio || ""
             root.settingsDisplayName = root.currentUserDisplayName
             root.settingsAvatarUrl = root.currentUserAvatar
             root.settingsBio = root.currentUserBio
+        }
+        // [M6] Trạng thái unread ban đầu (lúc login).
+        function onUnreadState(channels) {
+            var mm = ({})
+            for (var i = 0; i < channels.length; ++i) {
+                var c = channels[i]
+                if (c.unread > 0 || c.mentions > 0)
+                    mm[c.channel_id] = { unread: c.unread, mentions: c.mentions }
+            }
+            root.unreadMap = mm
+        }
+        // [M6] Có tin mới ở channel không xem → +1 unread.
+        function onChannelActivity(channelId) {
+            if (channelId === root.currentChannelId) return
+            var mm = Object.assign({}, root.unreadMap)
+            var e = mm[channelId] || { unread: 0, mentions: 0 }
+            mm[channelId] = { unread: e.unread + 1, mentions: e.mentions }
+            root.unreadMap = mm
+        }
+        // [M6] Bị nhắc ở channel không xem → +1 mention.
+        function onMentionPinged(channelId, serverId, messageId, authorName) {
+            var mm = Object.assign({}, root.unreadMap)
+            var e = mm[channelId] || { unread: 0, mentions: 0 }
+            mm[channelId] = { unread: e.unread, mentions: e.mentions + 1 }
+            root.unreadMap = mm
+        }
+        // [M6] Nạp lịch sử channel đang xem → đánh dấu đã đọc tới tin cuối.
+        function onChannelHistory(channelId, messages) {
+            if (channelId === root.currentChannelId && messages.length > 0)
+                chatClient.markChannelRead(channelId, messages[messages.length - 1].id)
+            root.clearUnreadLocal(channelId)
+        }
+        // [M6] Tin mới ở channel đang xem → đánh dấu đã đọc luôn.
+        function onMessageReceived(message) {
+            if (message.channel_id === root.currentChannelId)
+                chatClient.markChannelRead(root.currentChannelId, message.id)
+        }
+        // [M6-6B] Bạn bè & DM
+        function onFriendsReceived(friends) { root.friends = friends }
+        function onDmListReceived(dms) { root.dms = dms }
+        function onDmOpened(channelId, otherUser) {
+            root.dmMode = true
+            root.dmOtherUser = otherUser
+            root.selectChannel(channelId)
         }
         function onCustomEmojisReceived(emojis) {
             root.customEmojis = emojis

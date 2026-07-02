@@ -1,4 +1,5 @@
 #include "chatclient.h"
+#include <QDebug>
 #include <QJsonDocument>
 #include <QVariantMap>
 #include <QFile>
@@ -302,6 +303,37 @@ void ChatClient::selectChannel(int channelId) {
     sendOp("channel.select", data);
 }
 
+void ChatClient::markChannelRead(int channelId, int lastMsgId) {
+    QJsonObject data;
+    data["channel_id"]       = channelId;
+    data["last_read_msg_id"] = lastMsgId;
+    sendOp("channel.read", data);
+}
+
+// [M6-6B] Bạn bè & DM
+void ChatClient::sendFriendRequest(const QString& username) {
+    QJsonObject data; data["username"] = username;
+    sendOp("friend.request", data);
+}
+void ChatClient::acceptFriend(int userId) {
+    QJsonObject data; data["user_id"] = userId;
+    sendOp("friend.accept", data);
+}
+void ChatClient::removeFriend(int userId) {
+    QJsonObject data; data["user_id"] = userId;
+    sendOp("friend.remove", data);
+}
+void ChatClient::requestFriends() {
+    sendOp("friend.list", QJsonObject());
+}
+void ChatClient::openDm(int userId) {
+    QJsonObject data; data["user_id"] = userId;
+    sendOp("dm.open", data);
+}
+void ChatClient::requestDmList() {
+    sendOp("dm.list", QJsonObject());
+}
+
 void ChatClient::onConnected() {
     reconnectTimer_->stop();         // đã kết nối, ngừng thử lại
     emit connected();
@@ -370,108 +402,107 @@ void ChatClient::onReadyRead() {
                                      data["display_name"].toString(),
                                      data["avatar_url"].toString(),
                                      data["bio"].toString());
+        } else if (op == "unread.state") {
+            QVariantList list;
+            const QJsonArray arr = data["channels"].toArray();
+            for (const auto& v : arr) {
+                const QJsonObject o = v.toObject();
+                QVariantMap m;
+                m["channel_id"] = o["channel_id"].toInt();
+                m["unread"]     = o["unread"].toInt();
+                m["mentions"]   = o["mentions"].toInt();
+                list.append(m);
+            }
+            emit unreadState(list);
+        } else if (op == "channel.activity") {
+            emit channelActivity(data["channel_id"].toInt());
+        } else if (op == "mention.ping") {
+            emit mentionPinged(data["channel_id"].toInt(),
+                               data["server_id"].toInt(),
+                               data["message_id"].toInt(),
+                               data["author_name"].toString());
+        } else if (op == "friend.list") {
+            QVariantList list;
+            const QJsonArray arr = data["friends"].toArray();
+            for (const auto& v : arr) {
+                const QJsonObject o = v.toObject();
+                QVariantMap m;
+                m["user_id"]      = o["user_id"].toInt();
+                m["username"]     = o["username"].toString();
+                m["display_name"] = o["display_name"].toString();
+                m["avatar_url"]   = o["avatar_url"].toString();
+                m["status"]       = o["status"].toString();
+                m["incoming"]     = o["incoming"].toBool();
+                list.append(m);
+            }
+            emit friendsReceived(list);
+        } else if (op == "dm.list") {
+            QVariantList list;
+            const QJsonArray arr = data["dms"].toArray();
+            for (const auto& v : arr) {
+                const QJsonObject o = v.toObject();
+                QVariantMap m;
+                m["channel_id"]   = o["channel_id"].toInt();
+                m["user_id"]      = o["user_id"].toInt();
+                m["username"]     = o["username"].toString();
+                m["display_name"] = o["display_name"].toString();
+                m["avatar_url"]   = o["avatar_url"].toString();
+                list.append(m);
+            }
+            emit dmListReceived(list);
+        } else if (op == "dm.opened") {
+            const QJsonObject ou = data["other_user"].toObject();
+            QVariantMap m;
+            m["user_id"]      = ou["user_id"].toInt();
+            m["username"]     = ou["username"].toString();
+            m["display_name"] = ou["display_name"].toString();
+            m["avatar_url"]   = ou["avatar_url"].toString();
+            emit dmOpened(data["channel_id"].toInt(), m);
         } else if (op == "error") {
             emit errorReceived(data["reason"].toString());
         }
     }
 }
 
-void ChatClient::uploadCustomEmoji(const QString& localPathOrUrl, const QString& shortcode) {
-    // 1. Chuẩn hóa đường dẫn (Loại bỏ file:// từ QML FileDialog)
-    QString path = localPathOrUrl;
-    if (path.startsWith("file:")) {
-        path = QUrl(path).toLocalFile();
-    }
-
-    // 2. Chặn file quá khổ (Giới hạn Emoji thường chỉ dưới 1MB)
-    const qint64 MAX_EMOJI_SIZE = 1LL * 1024 * 1024; // 1 MB
-    if (QFileInfo(path).size() > MAX_EMOJI_SIZE) {
-        emit uploadFailed(tr("Emoji file too large (max 1 MB)"));
-        return;
-    }
-
-    QFile file(path);
-    if (!file.open(QIODevice::ReadOnly)) {
-        emit uploadFailed(tr("Cannot open emoji file: ") + path);
-        return;
-    }
-    const QByteArray bytes = file.readAll();
-    file.close();
-
-    // 3. Phân tích đuôi file để dán nhãn Content-Type
-    const QString suffix = QFileInfo(path).suffix().toLower();
-    QString contentType = "image/png"; // Default
-    if (suffix == "jpg" || suffix == "jpeg") contentType = "image/jpeg";
-    else if (suffix == "gif") contentType = "image/gif";
-    else if (suffix == "webp") contentType = "image/webp";
-
-    // 4. Khởi tạo Request (Ghi chú: Cần sửa 127.0.0.1 thành biến động trong tương lai)
-    QNetworkRequest req(QUrl("http://127.0.0.1:8081/upload_emoji"));
-    req.setHeader(QNetworkRequest::ContentTypeHeader, contentType);
-    
-    // Dán tên Shortcode vào Header để Server C++ đọc được
-    req.setRawHeader("X-Emoji-Shortcode", shortcode.toUtf8());
-
-    // 5. Gửi dữ liệu nhị phân
-    QNetworkReply* reply = netManager_->post(req, bytes);
-    connect(reply, &QNetworkReply::finished, this, [this, reply, shortcode]() {
-        reply->deleteLater();
-        if (reply->error() != QNetworkReply::NoError) {
-            emit uploadFailed("Upload Emoji Error: " + reply->errorString());
-            return;
-        }
-        
-        // 6. Bóc tách JSON trả về từ Server để lấy URL thực tế
-        const QJsonObject obj = QJsonDocument::fromJson(reply->readAll()).object();
-        const QString url = obj.value("url").toString();
-        
-        if (!url.isEmpty()) {
-            emit customEmojiUploaded(shortcode, url);
-        }
-    });
-}
-
 qint64 ChatClient::getLocalFileSize(const QString& localPathOrUrl) {
     QString path = localPathOrUrl;
-    if (path.startsWith("file:")) {
+    if (path.startsWith("file:"))
         path = QUrl(path).toLocalFile();
-    }
-    
+
     QFileInfo fileInfo(path);
-    if (fileInfo.exists()) {
-        return fileInfo.size(); // Trả về số Byte
-    }
-    return 0;
+    return fileInfo.exists() ? fileInfo.size() : 0;
 }
 
-void ChatClient::deleteCustomEmoji(const QString& shortcode) {
+void ChatClient::deleteCustomEmoji(int serverId, const QString& shortcode) {
     QNetworkRequest req(QUrl("http://127.0.0.1:8081/delete_emoji"));
     req.setRawHeader("X-Emoji-Shortcode", shortcode.toUtf8());
+    req.setRawHeader("X-Server-Id", QByteArray::number(serverId));
 
-    // Dùng mảng byte rỗng vì chúng ta chỉ cần gửi Header
     QNetworkReply* reply = netManager_->post(req, QByteArray());
     connect(reply, &QNetworkReply::finished, this, [this, reply, shortcode]() {
         reply->deleteLater();
-        if (reply->error() == QNetworkReply::NoError) {
+        if (reply->error() == QNetworkReply::NoError)
             emit customEmojiDeleted(shortcode);
-        } else {
-            qDebug() << "[Client] Lỗi Xóa Emoji:" << reply->errorString();
-        }
+        else
+            qWarning() << "[Client] delete emoji failed:" << reply->errorString();
     });
 }
 
-void ChatClient::renameCustomEmoji(const QString& oldShortcode, const QString& newShortcode) {
+void ChatClient::renameCustomEmoji(int serverId, const QString& oldShortcode,
+                                   const QString& newShortcode) {
     QNetworkRequest req(QUrl("http://127.0.0.1:8081/rename_emoji"));
     req.setRawHeader("X-Emoji-Old-Shortcode", oldShortcode.toUtf8());
     req.setRawHeader("X-Emoji-New-Shortcode", newShortcode.toUtf8());
+    req.setRawHeader("X-Server-Id", QByteArray::number(serverId));
 
     QNetworkReply* reply = netManager_->post(req, QByteArray());
-    connect(reply, &QNetworkReply::finished, this, [this, reply, oldShortcode, newShortcode]() {
+    connect(reply, &QNetworkReply::finished, this,
+            [this, reply, oldShortcode, newShortcode]() {
         reply->deleteLater();
-        if (reply->error() == QNetworkReply::NoError) {
+        if (reply->error() == QNetworkReply::NoError)
             emit customEmojiRenamed(oldShortcode, newShortcode);
-        } else {
-            qDebug() << "[Client] Lỗi Đổi tên Emoji:" << reply->errorString();
-        }
+        else
+            qWarning() << "[Client] rename emoji failed:" << reply->errorString();
     });
 }
+

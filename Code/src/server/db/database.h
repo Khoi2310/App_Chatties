@@ -69,6 +69,32 @@ struct CustomEmojiRecord {
     std::string image_url;
 };
 
+// [M6] Số tin chưa đọc + số lần bị nhắc của 1 channel.
+struct UnreadInfo {
+    uint32_t channel_id;
+    uint32_t unread;
+    uint32_t mentions;
+};
+
+// [M6-6B] Một người bạn / lời mời kết bạn.
+struct FriendRecord {
+    uint32_t    user_id;
+    std::string username;
+    std::string display_name;
+    std::string avatar_url;
+    std::string status;      // 'pending' | 'accepted'
+    bool        incoming;    // true = lời mời đến mình (chưa chấp nhận)
+};
+
+// [M6-6B] Một cuộc trò chuyện DM (đối phương).
+struct DmRecord {
+    uint32_t    channel_id;
+    uint32_t    other_id;
+    std::string other_username;
+    std::string other_display_name;
+    std::string other_avatar_url;
+};
+
 class Database {
 public:
     // Mở (hoặc tạo) file DB rồi chạy migration.
@@ -154,6 +180,37 @@ public:
 
     // Custom emoji của riêng 1 server.
     std::vector<CustomEmojiRecord> emojis_for_server(uint32_t server_id);
+
+    // Xóa / đổi tên custom emoji của riêng 1 server (theo server_id + shortcode).
+    void delete_custom_emoji(uint32_t server_id, const std::string& shortcode);
+    void rename_custom_emoji(uint32_t server_id,
+                             const std::string& old_shortcode,
+                             const std::string& new_shortcode);
+
+    // ─── [M6] Mentions & unread ────────────────────────────────────
+    // Lưu 1 lượt nhắc tên (@mention).
+    void add_mention(uint32_t message_id, uint32_t user_id);
+    // user_id của 1 thành viên server theo username (không phân biệt hoa/thường);
+    // nullopt nếu username không thuộc server.
+    std::optional<uint32_t> resolve_member(uint32_t server_id,
+                                           const std::string& username);
+    // Đánh dấu user đã đọc channel tới last_read_msg_id.
+    void mark_channel_read(uint32_t user_id, uint32_t channel_id,
+                           uint32_t last_read_msg_id);
+    // Số tin chưa đọc + số mention cho mọi channel user có quyền xem.
+    std::vector<UnreadInfo> unread_counts(uint32_t user_id);
+
+    // ─── [M6-6B] Bạn bè & DM ───────────────────────────────────────
+    bool send_friend_request(uint32_t from_id, uint32_t to_id);
+    bool accept_friend_request(uint32_t me, uint32_t other);
+    void remove_friend(uint32_t me, uint32_t other);
+    std::vector<FriendRecord> friends_of(uint32_t user_id);
+
+    // Tìm (hoặc tạo) kênh DM giữa 2 user; trả channel_id (server_id = 0).
+    uint32_t open_dm(uint32_t a, uint32_t b);
+    std::vector<DmRecord> dm_channels_for(uint32_t user_id);
+    bool is_dm_participant(uint32_t user_id, uint32_t channel_id);
+    std::unordered_set<uint32_t> dm_participant_ids(uint32_t channel_id);
 
 private:
     void run_migrations();

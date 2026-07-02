@@ -5,6 +5,7 @@
 #include "server/handlers/user_handler.h"
 #include <iostream>
 #include <algorithm>
+#include <cctype>
 #include <chrono>
 #include <unordered_set>
 #include <nlohmann/json.hpp>
@@ -49,6 +50,34 @@ public:
     void refresh_ready_if_user_in(const std::unordered_set<uint32_t>& members) {
         if (state_ == State::Authenticated && members.count(user_id_))
             send_ready();
+    }
+
+    // [M6] Gửi mention.ping nếu user này bị nhắc và KHÔNG đang xem channel đó.
+    void notify_mention_if(const std::unordered_set<uint32_t>& mentioned,
+                           uint32_t channel_id, const nlohmann::json& ping) {
+        if (state_ == State::Authenticated
+            && mentioned.count(user_id_)
+            && current_channel_id_ != channel_id) {
+            send_op("mention.ping", ping);
+        }
+    }
+
+    // [M6] Báo có tin mới ở channel cho thành viên KHÔNG đang xem (để tăng unread).
+    void notify_activity_if(const std::unordered_set<uint32_t>& members,
+                            uint32_t channel_id, const nlohmann::json& activity) {
+        if (state_ == State::Authenticated
+            && members.count(user_id_)
+            && current_channel_id_ != channel_id) {
+            send_op("channel.activity", activity);
+        }
+    }
+
+    // [M6-6B] Đẩy lại danh sách bạn bè / DM cho đúng user (nếu đang online).
+    void send_friend_list_if(uint32_t uid) {
+        if (state_ == State::Authenticated && user_id_ == uid) send_friend_list();
+    }
+    void send_dm_list_if(uint32_t uid) {
+        if (state_ == State::Authenticated && user_id_ == uid) send_dm_list();
     }
 
 private:
@@ -102,11 +131,18 @@ private:
                 else if (op == "message.delete") handle_message_delete(data);
                 else if (op == "reaction.toggle") handle_reaction_toggle(data);
                 else if (op == "channel.select") handle_channel_select(data);
+                else if (op == "channel.read")   handle_channel_read(data);
                 else if (op == "server.create")  handle_server_create(data);
                 else if (op == "server.join")    handle_server_join(data);
                 else if (op == "channel.create") handle_channel_create(data);
                 else if (op == "profile.update") handle_profile_update(data);
                 else if (op == "user.profile")   handle_user_profile(data);
+                else if (op == "friend.request") handle_friend_request(data);
+                else if (op == "friend.accept")  handle_friend_accept(data);
+                else if (op == "friend.remove")  handle_friend_remove(data);
+                else if (op == "friend.list")    send_friend_list();
+                else if (op == "dm.open")        handle_dm_open(data);
+                else if (op == "dm.list")        send_dm_list();
             }
         } catch (const std::exception& e) {
             utils::Logger::instance().warning(
@@ -177,13 +213,18 @@ private:
             {"servers", servers},
             {"avatar_url", avatar_url_}
         });
+        send_unread_state();   // [M6] gửi kèm số chưa đọc / mention
     }
 
     // ── Chọn channel + lịch sử ───────────────────────────────────
     void handle_channel_select(const nlohmann::json& data) {
         uint32_t channel_id = data.value("channel_id", 0u);
         uint32_t server_id  = db_.channel_server_id(channel_id);
-        if (server_id == 0 || !db_.is_member(user_id_, server_id)) {
+        // [M6-6B] Kênh thường: phải là thành viên server. Kênh DM (server_id=0):
+        // phải là 1 trong 2 người tham gia.
+        bool allowed = (server_id != 0 && db_.is_member(user_id_, server_id))
+                    || (server_id == 0 && db_.is_dm_participant(user_id_, channel_id));
+        if (!allowed) {
             send_error("You don't have access to this channel.");
             return;
         }
@@ -195,6 +236,106 @@ private:
         }
         send_op("channel.history",
                 { {"channel_id", channel_id}, {"messages", msgs} });
+    }
+
+    // [M6] Đánh dấu đã đọc channel tới 1 message id.
+    void handle_channel_read(const nlohmann::json& data) {
+        uint32_t channel_id = data.value("channel_id", 0u);
+        uint32_t last_id    = data.value("last_read_msg_id", 0u);
+        uint32_t server_id  = db_.channel_server_id(channel_id);
+        if (server_id == 0 || !db_.is_member(user_id_, server_id)) return;
+        db_.mark_channel_read(user_id_, channel_id, last_id);
+    }
+
+    // [M6] Gửi số tin chưa đọc + mention của mọi channel cho client.
+    void send_unread_state() {
+        nlohmann::json arr = nlohmann::json::array();
+        for (const auto& u : db_.unread_counts(user_id_)) {
+            arr.push_back({
+                {"channel_id", u.channel_id},
+                {"unread",     u.unread},
+                {"mentions",   u.mentions}
+            });
+        }
+        send_op("unread.state", { {"channels", arr} });
+    }
+
+    // ── [M6-6B] Bạn bè ───────────────────────────────────────────
+    void handle_friend_request(const nlohmann::json& data) {
+        std::string username = data.value("username", std::string());
+        auto target = db_.find_user(username);
+        if (!target || target->id == user_id_) { send_error("User not found."); return; }
+        db_.send_friend_request(user_id_, target->id);
+        send_friend_list();
+        notify_friend_list(target->id);
+    }
+    void handle_friend_accept(const nlohmann::json& data) {
+        uint32_t other = data.value("user_id", 0u);
+        if (other == 0) return;
+        if (db_.accept_friend_request(user_id_, other)) {
+            send_friend_list();
+            notify_friend_list(other);
+        }
+    }
+    void handle_friend_remove(const nlohmann::json& data) {
+        uint32_t other = data.value("user_id", 0u);
+        if (other == 0) return;
+        db_.remove_friend(user_id_, other);
+        send_friend_list();
+        notify_friend_list(other);
+    }
+    void send_friend_list() {
+        nlohmann::json arr = nlohmann::json::array();
+        for (const auto& f : db_.friends_of(user_id_)) {
+            arr.push_back({
+                {"user_id",      f.user_id},
+                {"username",     f.username},
+                {"display_name", f.display_name},
+                {"avatar_url",   f.avatar_url},
+                {"status",       f.status},
+                {"incoming",     f.incoming}
+            });
+        }
+        send_op("friend.list", { {"friends", arr} });
+    }
+    void notify_friend_list(uint32_t uid) {
+        for (auto& conn : connections_) conn->send_friend_list_if(uid);
+    }
+
+    // ── [M6-6B] DM ───────────────────────────────────────────────
+    void handle_dm_open(const nlohmann::json& data) {
+        uint32_t other = data.value("user_id", 0u);
+        if (other == 0 || other == user_id_) return;
+        auto prof = db_.get_user_profile(other);
+        if (!prof) { send_error("User not found."); return; }
+        uint32_t ch = db_.open_dm(user_id_, other);
+        send_op("dm.opened", {
+            {"channel_id", ch},
+            {"other_user", {
+                {"user_id",      prof->id},
+                {"username",     prof->username},
+                {"display_name", prof->display_name},
+                {"avatar_url",   prof->avatar_url}
+            }}
+        });
+        send_dm_list();
+        notify_dm_list(other);
+    }
+    void send_dm_list() {
+        nlohmann::json arr = nlohmann::json::array();
+        for (const auto& d : db_.dm_channels_for(user_id_)) {
+            arr.push_back({
+                {"channel_id",   d.channel_id},
+                {"user_id",      d.other_id},
+                {"username",     d.other_username},
+                {"display_name", d.other_display_name},
+                {"avatar_url",   d.other_avatar_url}
+            });
+        }
+        send_op("dm.list", { {"dms", arr} });
+    }
+    void notify_dm_list(uint32_t uid) {
+        for (auto& conn : connections_) conn->send_dm_list_if(uid);
     }
 
     // ── Gửi tin nhắn ─────────────────────────────────────────────
@@ -211,7 +352,10 @@ private:
         if (content.empty() && atts.empty()) return;
 
         uint32_t server_id = db_.channel_server_id(channel_id);
-        if (server_id == 0 || !db_.is_member(user_id_, server_id)) {
+        // [M6-6B] Cho phép đăng ở kênh thường (thành viên server) hoặc kênh DM.
+        bool can_post = (server_id != 0 && db_.is_member(user_id_, server_id))
+                     || (server_id == 0 && db_.is_dm_participant(user_id_, channel_id));
+        if (!can_post) {
             send_error("You can't post in this channel.");
             return;
         }
@@ -252,13 +396,43 @@ private:
             rec.attachments.push_back(ar);
         }
 
+        // [M6] Phân tích @mention và lưu vào bảng mentions.
+        std::unordered_set<uint32_t> mentioned;
+        {
+            bool everyone = false;
+            for (size_t i = 0; i < content.size(); ++i) {
+                if (content[i] != '@') continue;
+                size_t k = i + 1;
+                while (k < content.size() &&
+                       (std::isalnum(static_cast<unsigned char>(content[k])) ||
+                        content[k] == '_'))
+                    ++k;
+                if (k == i + 1) continue;              // '@' đơn lẻ
+                std::string name = content.substr(i + 1, k - i - 1);
+                i = k - 1;
+                if (name == "everyone" || name == "here") { everyone = true; continue; }
+                if (auto uid = db_.resolve_member(server_id, name))
+                    mentioned.insert(*uid);
+            }
+            if (everyone)
+                for (uint32_t uid : db_.member_ids(server_id)) mentioned.insert(uid);
+            for (uint32_t uid : mentioned) db_.add_mention(id, uid);
+        }
+
         utils::Logger::instance().info(
             "[Message] ch" + std::to_string(channel_id) + " " +
             display_name_ + ": " + content);
 
+        nlohmann::json mjson = message_to_json(rec);
+        {
+            nlohmann::json marr = nlohmann::json::array();
+            for (uint32_t uid : mentioned) marr.push_back(uid);
+            mjson["mentions"] = marr;      // [M6] danh sách user bị nhắc
+        }
+
         nlohmann::json env;
         env["op"]   = "message.create";
-        env["data"] = message_to_json(rec);
+        env["data"] = mjson;
         std::string payload = env.dump(-1, ' ', false,
                                        nlohmann::json::error_handler_t::replace) + "\n";
 
@@ -266,6 +440,26 @@ private:
         for (auto& conn : connections_) {
             if (conn->is_viewing(channel_id)) {
                 conn->deliver(payload);
+            }
+        }
+
+        // [M6] Báo unread + mention cho thành viên KHÔNG đang xem channel.
+        {
+            // Kênh thường: thành viên server. Kênh DM: 2 người tham gia.
+            std::unordered_set<uint32_t> members = (server_id != 0)
+                ? db_.member_ids(server_id)
+                : db_.dm_participant_ids(channel_id);
+            nlohmann::json activity = { {"channel_id", channel_id} };
+            nlohmann::json ping = {
+                {"channel_id",  channel_id},
+                {"server_id",   server_id},
+                {"message_id",  id},
+                {"author_name", display_name_}
+            };
+            for (auto& conn : connections_) {
+                conn->notify_activity_if(members, channel_id, activity);
+                if (!mentioned.empty())
+                    conn->notify_mention_if(mentioned, channel_id, ping);
             }
         }
     }

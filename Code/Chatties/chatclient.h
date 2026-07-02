@@ -35,7 +35,6 @@ public:
     Q_INVOKABLE void editMessage(int messageId, const QString& content);
     Q_INVOKABLE void deleteMessage(int messageId);
     Q_INVOKABLE void toggleReaction(int messageId, const QString& emoji);
-    Q_INVOKABLE void uploadCustomEmoji(const QString& localPathOrUrl, const QString& shortcode);
 
     // Tìm GIF qua server proxy (Giphy)
     Q_INVOKABLE void searchGifs(const QString& query);
@@ -50,9 +49,20 @@ public:
     Q_INVOKABLE void joinServer(int serverId);
     Q_INVOKABLE void createChannel(int serverId, const QString& name);
     Q_INVOKABLE void selectChannel(int channelId);
+    // [M6] Đánh dấu đã đọc channel tới message id.
+    Q_INVOKABLE void markChannelRead(int channelId, int lastMsgId);
+
+    // [M6-6B] Bạn bè & DM
+    Q_INVOKABLE void sendFriendRequest(const QString& username);
+    Q_INVOKABLE void acceptFriend(int userId);
+    Q_INVOKABLE void removeFriend(int userId);
+    Q_INVOKABLE void requestFriends();
+    Q_INVOKABLE void openDm(int userId);
+    Q_INVOKABLE void requestDmList();
     Q_INVOKABLE qint64 getLocalFileSize(const QString& localPathOrUrl);
-    Q_INVOKABLE void deleteCustomEmoji(const QString& shortcode);
-    Q_INVOKABLE void renameCustomEmoji(const QString& oldShortcode, const QString& newShortcode);
+    Q_INVOKABLE void deleteCustomEmoji(int serverId, const QString& shortcode);
+    Q_INVOKABLE void renameCustomEmoji(int serverId, const QString& oldShortcode,
+                                       const QString& newShortcode);
 
 signals:
     void connected();
@@ -75,6 +85,14 @@ signals:
     void customEmojiUploaded(QString shortcode, QString url);
     void customEmojiDeleted(QString shortcode);
     void customEmojiRenamed(QString oldShortcode, QString newShortcode);
+    // [M6] Mentions & unread
+    void unreadState(QVariantList channels);   // [{channel_id, unread, mentions}]
+    void channelActivity(int channelId);       // có tin mới ở channel không xem
+    void mentionPinged(int channelId, int serverId, int messageId, QString authorName);
+    // [M6-6B] Bạn bè & DM
+    void friendsReceived(QVariantList friends);   // [{user_id, username, display_name, avatar_url, status, incoming}]
+    void dmListReceived(QVariantList dms);        // [{channel_id, user_id, username, display_name, avatar_url}]
+    void dmOpened(int channelId, QVariantMap otherUser);
 
 private slots:
     void onConnected();

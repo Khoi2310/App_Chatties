@@ -216,6 +216,75 @@ void HttpMediaServer::setupRoutes() {
         }.dump(), "application/json");
     });
 
+    // POST /delete_emoji : xóa custom emoji của 1 server.
+    // Header: X-Emoji-Shortcode, X-Server-Id.
+    m_svr->Post("/delete_emoji", [this](const httplib::Request& req, httplib::Response& res) {
+        const std::string shortcode = req.get_header_value("X-Emoji-Shortcode");
+        if (!isValidShortcode(shortcode)) {
+            res.status = 400;
+            res.set_content(nlohmann::json{{"error", "invalid shortcode"}}.dump(),
+                            "application/json");
+            return;
+        }
+        uint32_t server_id = 0;
+        if (req.has_header("X-Server-Id"))
+            server_id = static_cast<uint32_t>(std::stoul(req.get_header_value("X-Server-Id")));
+        if (server_id == 0) {
+            res.status = 400;
+            res.set_content(nlohmann::json{{"error", "missing X-Server-Id"}}.dump(),
+                            "application/json");
+            return;
+        }
+        try {
+            m_db.delete_custom_emoji(server_id, shortcode);
+        } catch (const std::exception& e) {
+            Logger::instance().error(std::string("[Media] delete emoji db: ") + e.what());
+            res.status = 500;
+            res.set_content(nlohmann::json{{"error", "db delete failed"}}.dump(),
+                            "application/json");
+            return;
+        }
+        res.status = 200;
+        res.set_content(nlohmann::json{
+            {"status", "success"}, {"shortcode", shortcode}
+        }.dump(), "application/json");
+    });
+
+    // POST /rename_emoji : đổi tên emoji của 1 server.
+    // Header: X-Emoji-Old-Shortcode, X-Emoji-New-Shortcode, X-Server-Id.
+    m_svr->Post("/rename_emoji", [this](const httplib::Request& req, httplib::Response& res) {
+        const std::string old_sc = req.get_header_value("X-Emoji-Old-Shortcode");
+        const std::string new_sc = req.get_header_value("X-Emoji-New-Shortcode");
+        if (!isValidShortcode(old_sc) || !isValidShortcode(new_sc)) {
+            res.status = 400;
+            res.set_content(nlohmann::json{{"error", "invalid shortcode"}}.dump(),
+                            "application/json");
+            return;
+        }
+        uint32_t server_id = 0;
+        if (req.has_header("X-Server-Id"))
+            server_id = static_cast<uint32_t>(std::stoul(req.get_header_value("X-Server-Id")));
+        if (server_id == 0) {
+            res.status = 400;
+            res.set_content(nlohmann::json{{"error", "missing X-Server-Id"}}.dump(),
+                            "application/json");
+            return;
+        }
+        try {
+            m_db.rename_custom_emoji(server_id, old_sc, new_sc);
+        } catch (const std::exception& e) {
+            Logger::instance().error(std::string("[Media] rename emoji db: ") + e.what());
+            res.status = 500;
+            res.set_content(nlohmann::json{{"error", "db rename failed"}}.dump(),
+                            "application/json");
+            return;
+        }
+        res.status = 200;
+        res.set_content(nlohmann::json{
+            {"status", "success"}, {"old", old_sc}, {"new", new_sc}
+        }.dump(), "application/json");
+    });
+
     // GET /gif_search?q=... : proxy tới Giphy (giữ API key ở server).
     m_svr->Get("/gif_search", [this](const httplib::Request& req, httplib::Response& res) {
         if (m_giphy_key.empty()) {
