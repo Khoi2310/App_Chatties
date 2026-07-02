@@ -2681,6 +2681,14 @@ Item {
                             asynchronous: true; cache: true
                         }
                     }
+                    // [Auth] Username (chỉ đọc) dưới avatar.
+                    Label {
+                        Layout.alignment: Qt.AlignHCenter
+                        visible: root.currentUsername.length > 0
+                        text: "@" + root.currentUsername
+                        color: Theme.textMuted
+                        font.pixelSize: 12
+                    }
                     Button {
                         text: qsTr("Change avatar")
                         Layout.fillWidth: true
@@ -2722,6 +2730,25 @@ Item {
                             text: root.settingsBio
                             placeholderText: qsTr("Bio")
                             onTextChanged: root.settingsBio = text
+                        }
+                    }
+
+                    // [Auth] Nút đăng xuất.
+                    Button {
+                        text: qsTr("Log out")
+                        Layout.fillWidth: true
+                        Layout.topMargin: 6
+                        background: Rectangle { color: Theme.danger; radius: 6 }
+                        contentItem: Text {
+                            text: parent.text
+                            color: "white"
+                            font.bold: true
+                            horizontalAlignment: Text.AlignHCenter
+                            verticalAlignment: Text.AlignVCenter
+                        }
+                        onClicked: {
+                            settingsDialog.close()
+                            chatClient.logout()
                         }
                     }
 

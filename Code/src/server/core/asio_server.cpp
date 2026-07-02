@@ -448,7 +448,7 @@ private:
         rec.id             = new_id;
         rec.channel_id     = target_ch;
         rec.author_id      = user_id_;
-        rec.author_name    = display_name_;
+        rec.author_name    = display_name_.empty() ? username_ : display_name_;
         rec.avatar_url     = avatar_url_;
         rec.content        = src->content;
         rec.created_at     = ts;
@@ -507,7 +507,7 @@ private:
         rec.id          = id;
         rec.channel_id  = channel_id;
         rec.author_id   = user_id_;
-        rec.author_name = display_name_;
+        rec.author_name = display_name_.empty() ? username_ : display_name_;
         rec.avatar_url  = avatar_url_;
         rec.content     = content;
         rec.created_at  = ts;
