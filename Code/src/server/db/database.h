@@ -95,6 +95,17 @@ struct DmRecord {
     std::string other_avatar_url;
 };
 
+// [M7] Một kết quả tìm kiếm tin nhắn.
+struct SearchHit {
+    uint32_t    id;
+    uint32_t    channel_id;
+    uint32_t    server_id;      // 0 nếu là DM
+    std::string channel_name;
+    std::string author_name;
+    std::string content;
+    uint32_t    created_at;
+};
+
 class Database {
 public:
     // Mở (hoặc tạo) file DB rồi chạy migration.
@@ -159,6 +170,9 @@ public:
     // Returns the set of user_ids that are members of server_id (single query).
     std::unordered_set<uint32_t> member_ids(uint32_t server_id);
 
+    // [Polish] Danh sách thành viên (id, username, display_name, avatar) để gợi ý @mention.
+    std::vector<UserRecord> members_of(uint32_t server_id);
+
     std::vector<ServerRecord>  servers_for_user(uint32_t user_id);
     std::vector<ChannelRecord> channels_for_server(uint32_t server_id);
 
@@ -211,6 +225,19 @@ public:
     std::vector<DmRecord> dm_channels_for(uint32_t user_id);
     bool is_dm_participant(uint32_t user_id, uint32_t channel_id);
     std::unordered_set<uint32_t> dm_participant_ids(uint32_t channel_id);
+
+    // ─── [M7] Tìm kiếm & Ghim ──────────────────────────────────────
+    // Tìm tin nhắn (LIKE) trong phạm vi user có quyền xem.
+    // scope: "channel" | "server" | "all"; before_id > 0 để phân trang.
+    std::vector<SearchHit> search_messages(uint32_t user_id, const std::string& query,
+                                           const std::string& scope, uint32_t scope_id,
+                                           uint32_t before_id, int limit);
+    // Ghim / bỏ ghim / kiểm tra / danh sách ghim của 1 channel.
+    void pin_message(uint32_t channel_id, uint32_t message_id,
+                     uint32_t pinned_by, uint32_t pinned_at);
+    void unpin_message(uint32_t channel_id, uint32_t message_id);
+    bool is_pinned(uint32_t channel_id, uint32_t message_id);
+    std::vector<MessageRecord> pins_for(uint32_t channel_id);
 
 private:
     void run_migrations();

@@ -2,6 +2,9 @@
 #include <QQmlApplicationEngine>
 #include <QQmlContext>
 #include <QQuickStyle>
+#include <QSystemTrayIcon>
+#include <QQuickWindow>
+#include <QStyle>
 #include "chatclient.h"
 #include "messagemodel.h"
 
@@ -42,6 +45,31 @@ int main(int argc, char* argv[])
         Qt::QueuedConnection);
 
     engine.loadFromModule("Chatties", "Main");
+
+    // [Polish] Khay hệ thống + thông báo desktop khi bị @nhắc lúc cửa sổ không active.
+    QQuickWindow* win = engine.rootObjects().isEmpty()
+        ? nullptr
+        : qobject_cast<QQuickWindow*>(engine.rootObjects().first());
+
+    QSystemTrayIcon tray;
+    tray.setIcon(!app.windowIcon().isNull()
+                 ? app.windowIcon()
+                 : app.style()->standardIcon(QStyle::SP_MessageBoxInformation));
+    tray.setToolTip("Chatties");
+    if (QSystemTrayIcon::isSystemTrayAvailable())
+        tray.show();
+
+    QObject::connect(&chatClient, &ChatClient::mentionPinged, &app,
+        [&tray, win](int, int, int, const QString& author) {
+            if (!win || !win->isActive()) {
+                tray.showMessage(author + " mentioned you",
+                                 QStringLiteral("You were mentioned in Chatties"),
+                                 QSystemTrayIcon::Information, 5000);
+            }
+        });
+    QObject::connect(&tray, &QSystemTrayIcon::messageClicked, &app, [win]() {
+        if (win) { win->show(); win->raise(); win->requestActivate(); }
+    });
 
     chatClient.connectToServer("127.0.0.1", 8080);
 

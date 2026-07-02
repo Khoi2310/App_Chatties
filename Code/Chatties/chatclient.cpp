@@ -334,6 +334,33 @@ void ChatClient::requestDmList() {
     sendOp("dm.list", QJsonObject());
 }
 
+// [M7] Tìm kiếm & ghim
+void ChatClient::searchMessages(const QString& query, const QString& scope,
+                                int scopeId, int beforeId) {
+    QJsonObject data;
+    data["query"] = query;
+    data["scope"] = scope;
+    if (scopeId != 0)  data["scope_id"]  = scopeId;
+    if (beforeId != 0) data["before_id"] = beforeId;
+    sendOp("search.messages", data);
+}
+void ChatClient::pinMessage(int channelId, int messageId) {
+    QJsonObject data; data["channel_id"] = channelId; data["message_id"] = messageId;
+    sendOp("message.pin", data);
+}
+void ChatClient::unpinMessage(int channelId, int messageId) {
+    QJsonObject data; data["channel_id"] = channelId; data["message_id"] = messageId;
+    sendOp("message.unpin", data);
+}
+void ChatClient::requestPins(int channelId) {
+    QJsonObject data; data["channel_id"] = channelId;
+    sendOp("pins.list", data);
+}
+void ChatClient::requestMembers(int serverId) {
+    QJsonObject data; data["server_id"] = serverId;
+    sendOp("members.list", data);
+}
+
 void ChatClient::onConnected() {
     reconnectTimer_->stop();         // đã kết nối, ngừng thử lại
     emit connected();
@@ -458,6 +485,39 @@ void ChatClient::onReadyRead() {
             m["display_name"] = ou["display_name"].toString();
             m["avatar_url"]   = ou["avatar_url"].toString();
             emit dmOpened(data["channel_id"].toInt(), m);
+        } else if (op == "search.results") {
+            QVariantList list;
+            const QJsonArray arr = data["results"].toArray();
+            for (const auto& v : arr) {
+                const QJsonObject o = v.toObject();
+                QVariantMap m;
+                m["id"]           = o["id"].toInt();
+                m["channel_id"]   = o["channel_id"].toInt();
+                m["server_id"]    = o["server_id"].toInt();
+                m["channel_name"] = o["channel_name"].toString();
+                m["author_name"]  = o["author_name"].toString();
+                m["content"]      = o["content"].toString();
+                m["created_at"]   = static_cast<qint64>(o["created_at"].toDouble());
+                list.append(m);
+            }
+            emit searchResults(data["query"].toString(), list, data["has_more"].toBool());
+        } else if (op == "pins.list") {
+            emit pinsReceived(data["channel_id"].toInt(), data["pins"].toArray());
+        } else if (op == "pins.changed") {
+            emit pinsChanged(data["channel_id"].toInt());
+        } else if (op == "members.list") {
+            QVariantList list;
+            const QJsonArray arr = data["members"].toArray();
+            for (const auto& v : arr) {
+                const QJsonObject o = v.toObject();
+                QVariantMap m;
+                m["user_id"]      = o["user_id"].toInt();
+                m["username"]     = o["username"].toString();
+                m["display_name"] = o["display_name"].toString();
+                m["avatar_url"]   = o["avatar_url"].toString();
+                list.append(m);
+            }
+            emit membersReceived(data["server_id"].toInt(), list);
         } else if (op == "error") {
             emit errorReceived(data["reason"].toString());
         }

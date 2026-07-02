@@ -9,6 +9,12 @@ int MessageModel::rowCount(const QModelIndex& parent) const {
     return items_.size();
 }
 
+int MessageModel::indexOfMessage(int id) const {
+    for (int i = 0; i < items_.size(); ++i)
+        if (items_[i].id == id) return i;
+    return -1;
+}
+
 QVariant MessageModel::data(const QModelIndex& index, int role) const {
     if (!index.isValid() || index.row() < 0 || index.row() >= items_.size())
         return {};

@@ -23,6 +23,21 @@ Item {
     property var  dms: []
     property var  dmOtherUser: ({})
 
+    // [M7] Tìm kiếm & ghim
+    property bool searchOpen: false
+    property var  searchResultList: []
+    property string searchQueryStr: ""
+    property bool pinsOpen: false
+    property var  pinsList: []
+    property var  pinnedIds: ({})     // { messageId: true } của channel hiện tại
+    property int  pendingJumpId: 0
+
+    // [Polish] @-autocomplete
+    property var  serverMembers: []   // [{user_id, username, display_name, avatar_url}]
+    property var  mentionMatches: []  // thành viên khớp với @token đang gõ
+    property int  mentionTokenStart: -1  // vị trí ký tự '@' trong ô nhập; -1 = không có
+    property int  mentionIndex: 0     // mục đang chọn trong danh sách gợi ý
+
     // BỔ SUNG: Từ điển lưu trữ ánh xạ giữa Shortcode và Link thật của Custom Emoji
     property var customEmojiDictionary: ({})
 
@@ -207,12 +222,15 @@ Item {
         (servers.length > currentServerIndex && currentServerIndex >= 0)
             ? servers[currentServerIndex].id : 0
 
-    // Đổi server → nạp custom emoji của server đó.
+    // Đổi server → nạp custom emoji + danh sách thành viên của server đó.
     onCurrentServerIdChanged: {
         root.emojiMap = ({})
         root.customEmojis = []
-        if (currentServerId !== 0)
+        root.serverMembers = []
+        if (currentServerId !== 0) {
             chatClient.fetchCustomEmojis(currentServerId)
+            chatClient.requestMembers(currentServerId)   // [Polish] cho @-autocomplete
+        }
     }
 
     function selectChannel(id) {
@@ -228,6 +246,61 @@ Item {
             delete m[id]
             root.unreadMap = m
         }
+    }
+
+    // [M7] Nhảy tới 1 tin nhắn (từ kết quả tìm kiếm / ghim).
+    function jumpToMessage(channelId, messageId) {
+        root.searchOpen = false
+        root.pinsOpen = false
+        if (channelId !== root.currentChannelId) {
+            root.pendingJumpId = messageId       // cuộn sau khi history nạp xong
+            root.selectChannel(channelId)
+        } else {
+            root.scrollToMessage(messageId)
+        }
+    }
+    function scrollToMessage(messageId) {
+        var idx = messageModel.indexOfMessage(messageId)
+        if (idx >= 0)
+            list.positionViewAtIndex(idx, ListView.Center)
+    }
+
+    // [Polish] Phát hiện @token tại con trỏ, lọc thành viên khớp.
+    function updateMention() {
+        var pos = input.cursorPosition
+        var t = input.text
+        var i = pos - 1
+        while (i >= 0 && /[A-Za-z0-9_]/.test(t.charAt(i))) i--
+        if (i >= 0 && t.charAt(i) === "@"
+            && (i === 0 || /\s/.test(t.charAt(i - 1)))) {
+            var q = t.substring(i + 1, pos).toLowerCase()
+            var out = []
+            for (var k = 0; k < root.serverMembers.length; k++) {
+                var m = root.serverMembers[k]
+                var un = (m.username || "").toLowerCase()
+                var dn = (m.display_name || "").toLowerCase()
+                if (un.indexOf(q) === 0 || dn.indexOf(q) === 0) out.push(m)
+                if (out.length >= 8) break
+            }
+            root.mentionTokenStart = i
+            root.mentionMatches = out
+            root.mentionIndex = 0
+            return
+        }
+        root.mentionTokenStart = -1
+        root.mentionMatches = []
+    }
+    // [Polish] Chèn @username hoàn chỉnh, thay phần đang gõ.
+    function applyMention(username) {
+        if (root.mentionTokenStart < 0) return
+        var pos = input.cursorPosition
+        var before = input.text.substring(0, root.mentionTokenStart)
+        var after = input.text.substring(pos)
+        var ins = "@" + username + " "
+        input.text = before + ins + after
+        input.cursorPosition = (before + ins).length
+        root.mentionTokenStart = -1
+        root.mentionMatches = []
     }
 
     function avatarColorForName(name) {
@@ -824,6 +897,203 @@ Item {
             Layout.margins: 8
             spacing: 8
 
+            // [M7] Thanh tìm kiếm + nút ghim
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: 6
+                visible: root.currentChannelId !== 0
+                TextField {
+                    id: searchField
+                    Layout.fillWidth: true
+                    placeholderText: qsTr("Search messages…")
+                    color: Theme.textPrimary
+                    background: Rectangle { color: Theme.inputBg; radius: 6 }
+                    onTextChanged: searchTimer.restart()
+                    onAccepted: {
+                        if (text.trim().length >= 2) {
+                            root.searchOpen = true
+                            chatClient.searchMessages(text.trim(), "all", 0, 0)
+                        }
+                    }
+                }
+                Timer {
+                    id: searchTimer
+                    interval: 350
+                    onTriggered: {
+                        if (searchField.text.trim().length >= 2) {
+                            root.searchOpen = true
+                            chatClient.searchMessages(searchField.text.trim(), "all", 0, 0)
+                        } else {
+                            root.searchOpen = false
+                        }
+                    }
+                }
+                Label {
+                    text: "📌"
+                    font.pixelSize: 18
+                    opacity: root.pinsOpen ? 1.0 : 0.7
+                    MouseArea {
+                        anchors.fill: parent
+                        anchors.margins: -4
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: {
+                            root.searchOpen = false
+                            root.pinsOpen = !root.pinsOpen
+                            if (root.pinsOpen) chatClient.requestPins(root.currentChannelId)
+                        }
+                    }
+                }
+            }
+
+            // [M7] Popup kết quả tìm kiếm (phủ lên danh sách tin)
+            Popup {
+                id: searchPopup
+                parent: list
+                visible: root.searchOpen
+                width: list.width
+                height: list.height
+                x: 0; y: 0
+                padding: 8
+                modal: false
+                closePolicy: Popup.NoAutoClose
+                background: Rectangle {
+                    color: Theme.surface; radius: Theme.radius; border.color: Theme.inputBg
+                }
+                contentItem: ColumnLayout {
+                    spacing: 6
+                    RowLayout {
+                        Layout.fillWidth: true
+                        Label {
+                            Layout.fillWidth: true
+                            text: root.searchResultList.length + qsTr(" result(s) for “") + root.searchQueryStr + "”"
+                            color: Theme.textMuted; font.pixelSize: 12; elide: Text.ElideRight
+                        }
+                        Label {
+                            text: "✕"; color: Theme.textMuted
+                            MouseArea { anchors.fill: parent; anchors.margins: -6
+                                cursorShape: Qt.PointingHandCursor; onClicked: root.searchOpen = false }
+                        }
+                    }
+                    ListView {
+                        Layout.fillWidth: true; Layout.fillHeight: true; clip: true
+                        model: root.searchResultList
+                        spacing: 4
+                        delegate: Rectangle {
+                            width: ListView.view ? ListView.view.width : 0
+                            height: 46; radius: 6
+                            color: resArea.containsMouse ? Theme.inputBg : "transparent"
+                            Column {
+                                anchors.fill: parent; anchors.margins: 6; spacing: 2
+                                Row {
+                                    spacing: 6
+                                    Label { text: modelData.author_name; color: Theme.textPrimary; font.bold: true; font.pixelSize: 12 }
+                                    Label { text: "# " + modelData.channel_name; color: Theme.textMuted; font.pixelSize: 11 }
+                                }
+                                Label {
+                                    text: modelData.content
+                                    color: Theme.textMuted; font.pixelSize: 12
+                                    width: parent.width; elide: Text.ElideRight
+                                }
+                            }
+                            MouseArea {
+                                id: resArea; anchors.fill: parent; hoverEnabled: true
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: root.jumpToMessage(modelData.channel_id, modelData.id)
+                            }
+                        }
+                    }
+                }
+            }
+
+            // [M7] Popup danh sách tin ghim
+            Popup {
+                id: pinsPopup
+                parent: list
+                visible: root.pinsOpen
+                width: list.width
+                height: list.height
+                x: 0; y: 0
+                padding: 8
+                modal: false
+                closePolicy: Popup.NoAutoClose
+                background: Rectangle {
+                    color: Theme.surface; radius: Theme.radius; border.color: Theme.inputBg
+                }
+                contentItem: ColumnLayout {
+                    spacing: 6
+                    RowLayout {
+                        Layout.fillWidth: true
+                        Label { Layout.fillWidth: true; text: qsTr("Pinned messages"); color: Theme.textPrimary; font.bold: true }
+                        Label { text: "✕"; color: Theme.textMuted
+                            MouseArea { anchors.fill: parent; anchors.margins: -6
+                                cursorShape: Qt.PointingHandCursor; onClicked: root.pinsOpen = false } }
+                    }
+                    Label {
+                        visible: root.pinsList.length === 0
+                        text: qsTr("No pinned messages yet.")
+                        color: Theme.textMuted; font.pixelSize: 12
+                    }
+                    ListView {
+                        Layout.fillWidth: true; Layout.fillHeight: true; clip: true
+                        model: root.pinsList
+                        spacing: 4
+                        delegate: Rectangle {
+                            id: pinRow
+                            width: ListView.view ? ListView.view.width : 0
+                            height: 52; radius: 6
+                            color: pinItemArea.containsMouse ? Theme.inputBg : "transparent"
+                            // Đính kèm đầu tiên (nếu có) để hiện thumbnail.
+                            property var att0: (modelData.attachments && modelData.attachments.length > 0)
+                                               ? modelData.attachments[0] : null
+                            property bool isImg: pinRow.att0 !== null
+                                                 && (pinRow.att0.kind === "image" || pinRow.att0.kind === "gif")
+
+                            // Thumbnail ảnh/gif (AnimatedImage render được cả gif).
+                            Rectangle {
+                                id: pinThumbBox
+                                visible: pinRow.isImg
+                                anchors.left: parent.left; anchors.leftMargin: 6
+                                anchors.verticalCenter: parent.verticalCenter
+                                width: visible ? 40 : 0
+                                height: 40; radius: 4; clip: true
+                                color: Theme.background
+                                AnimatedImage {
+                                    anchors.fill: parent
+                                    source: pinRow.isImg ? pinRow.att0.url : ""
+                                    fillMode: Image.PreserveAspectCrop
+                                    asynchronous: true; cache: true
+                                }
+                            }
+                            Column {
+                                anchors.left: pinThumbBox.right
+                                anchors.leftMargin: pinRow.isImg ? 8 : 6
+                                anchors.right: unpinBtn.left; anchors.rightMargin: 4
+                                anchors.verticalCenter: parent.verticalCenter
+                                spacing: 2
+                                Label { text: modelData.username; color: Theme.textPrimary; font.bold: true; font.pixelSize: 12 }
+                                Label { text: modelData.content; color: Theme.textMuted; font.pixelSize: 12; width: parent.width; elide: Text.ElideRight }
+                            }
+                            Label {
+                                id: unpinBtn
+                                anchors.right: parent.right; anchors.rightMargin: 8
+                                anchors.verticalCenter: parent.verticalCenter
+                                text: "✕"; color: Theme.textMuted
+                                MouseArea { anchors.fill: parent; anchors.margins: -6
+                                    cursorShape: Qt.PointingHandCursor
+                                    onClicked: chatClient.unpinMessage(root.currentChannelId, modelData.id) }
+                            }
+                            MouseArea {
+                                id: pinItemArea
+                                anchors.left: parent.left; anchors.right: unpinBtn.left
+                                anchors.top: parent.top; anchors.bottom: parent.bottom
+                                hoverEnabled: true; cursorShape: Qt.PointingHandCursor
+                                onClicked: root.jumpToMessage(modelData.channel_id, modelData.id)
+                            }
+                        }
+                    }
+                }
+            }
+
             ListView {
                 id: list
                 Layout.fillWidth: true
@@ -1417,6 +1687,37 @@ Item {
                                         onClicked: { actionMenu.close(); root.copyText(msgItem.mContent) }
                                     }
                                 }
+                                // [M7] Pin / Unpin
+                                Rectangle {
+                                    width: parent.width; height: 34; radius: 4
+                                    color: pinArea.containsMouse ? Theme.accent : "transparent"
+                                    Row {
+                                        anchors.fill: parent
+                                        anchors.leftMargin: 10; anchors.rightMargin: 10
+                                        Label {
+                                            text: root.pinnedIds[msgItem.mId] ? qsTr("Unpin") : qsTr("Pin")
+                                            color: Theme.textPrimary
+                                            anchors.verticalCenter: parent.verticalCenter
+                                            width: parent.width - 24
+                                        }
+                                        Label {
+                                            text: "📌"; font.pixelSize: 16
+                                            anchors.verticalCenter: parent.verticalCenter
+                                        }
+                                    }
+                                    MouseArea {
+                                        id: pinArea
+                                        anchors.fill: parent; hoverEnabled: true
+                                        cursorShape: Qt.PointingHandCursor
+                                        onClicked: {
+                                            actionMenu.close()
+                                            if (root.pinnedIds[msgItem.mId])
+                                                chatClient.unpinMessage(root.currentChannelId, msgItem.mId)
+                                            else
+                                                chatClient.pinMessage(root.currentChannelId, msgItem.mId)
+                                        }
+                                    }
+                                }
 
                                 // Separator (chỉ hiện khi là tin của mình)
                                 Rectangle {
@@ -1631,6 +1932,77 @@ Item {
                             verticalAlignment: TextInput.AlignVCenter
                             background: Rectangle { color: "transparent" }
                             onAccepted: root.doSend()
+                            onTextChanged: root.updateMention()
+                            onCursorPositionChanged: root.updateMention()
+                            // [Polish] Điều hướng danh sách @mention bằng phím.
+                            Keys.onPressed: (event) => {
+                                if (root.mentionTokenStart >= 0 && root.mentionMatches.length > 0) {
+                                    if (event.key === Qt.Key_Tab
+                                        || event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
+                                        root.applyMention(root.mentionMatches[root.mentionIndex].username)
+                                        event.accepted = true
+                                    } else if (event.key === Qt.Key_Down) {
+                                        root.mentionIndex = Math.min(root.mentionIndex + 1, root.mentionMatches.length - 1)
+                                        event.accepted = true
+                                    } else if (event.key === Qt.Key_Up) {
+                                        root.mentionIndex = Math.max(root.mentionIndex - 1, 0)
+                                        event.accepted = true
+                                    } else if (event.key === Qt.Key_Escape) {
+                                        root.mentionTokenStart = -1
+                                        root.mentionMatches = []
+                                        event.accepted = true
+                                    }
+                                }
+                            }
+
+                            // [Polish] Popup gợi ý @mention (phía trên ô nhập).
+                            Popup {
+                                id: mentionPopup
+                                parent: input
+                                visible: root.mentionTokenStart >= 0 && root.mentionMatches.length > 0
+                                width: 240
+                                height: Math.min(root.mentionMatches.length * 34 + 8, 220)
+                                x: 0
+                                y: -height - 4
+                                padding: 4
+                                closePolicy: Popup.NoAutoClose
+                                background: Rectangle {
+                                    color: Theme.surface; radius: Theme.radius; border.color: Theme.inputBg
+                                }
+                                contentItem: ListView {
+                                    clip: true
+                                    model: root.mentionMatches
+                                    currentIndex: root.mentionIndex
+                                    delegate: Rectangle {
+                                        width: ListView.view ? ListView.view.width : 0
+                                        height: 34; radius: 4
+                                        color: (index === root.mentionIndex || mArea.containsMouse)
+                                               ? Theme.inputBg : "transparent"
+                                        Row {
+                                            anchors.fill: parent
+                                            anchors.leftMargin: 8
+                                            spacing: 6
+                                            Label {
+                                                anchors.verticalCenter: parent.verticalCenter
+                                                text: (modelData.display_name && modelData.display_name.length > 0
+                                                       ? modelData.display_name : modelData.username)
+                                                color: Theme.textPrimary; font.pixelSize: 13
+                                            }
+                                            Label {
+                                                anchors.verticalCenter: parent.verticalCenter
+                                                text: "@" + modelData.username
+                                                color: Theme.textMuted; font.pixelSize: 11
+                                            }
+                                        }
+                                        MouseArea {
+                                            id: mArea
+                                            anchors.fill: parent; hoverEnabled: true
+                                            cursorShape: Qt.PointingHandCursor
+                                            onClicked: root.applyMention(modelData.username)
+                                        }
+                                    }
+                                }
+                            }
                         }
 
                         // Nút GIF bên trong hộp.
@@ -2018,6 +2390,14 @@ Item {
             if (channelId === root.currentChannelId && messages.length > 0)
                 chatClient.markChannelRead(channelId, messages[messages.length - 1].id)
             root.clearUnreadLocal(channelId)
+            if (channelId === root.currentChannelId) {
+                chatClient.requestPins(channelId)   // [M7] nạp trạng thái ghim
+                if (root.pendingJumpId !== 0) {
+                    var jid = root.pendingJumpId
+                    root.pendingJumpId = 0
+                    Qt.callLater(function() { root.scrollToMessage(jid) })
+                }
+            }
         }
         // [M6] Tin mới ở channel đang xem → đánh dấu đã đọc luôn.
         function onMessageReceived(message) {
@@ -2031,6 +2411,27 @@ Item {
             root.dmMode = true
             root.dmOtherUser = otherUser
             root.selectChannel(channelId)
+        }
+        // [M7] Tìm kiếm & ghim
+        function onSearchResults(query, results, hasMore) {
+            root.searchQueryStr = query
+            root.searchResultList = results
+        }
+        function onPinsReceived(channelId, pins) {
+            if (channelId !== root.currentChannelId) return
+            root.pinsList = pins
+            var ids = ({})
+            for (var i = 0; i < pins.length; ++i)
+                ids[pins[i].id] = true
+            root.pinnedIds = ids
+        }
+        function onPinsChanged(channelId) {
+            if (channelId === root.currentChannelId)
+                chatClient.requestPins(channelId)
+        }
+        function onMembersReceived(serverId, members) {
+            if (serverId === root.currentServerId)
+                root.serverMembers = members
         }
         function onCustomEmojisReceived(emojis) {
             root.customEmojis = emojis

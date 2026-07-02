@@ -59,6 +59,14 @@ public:
     Q_INVOKABLE void requestFriends();
     Q_INVOKABLE void openDm(int userId);
     Q_INVOKABLE void requestDmList();
+
+    // [M7] Tìm kiếm & ghim
+    Q_INVOKABLE void searchMessages(const QString& query, const QString& scope,
+                                    int scopeId, int beforeId);
+    Q_INVOKABLE void pinMessage(int channelId, int messageId);
+    Q_INVOKABLE void unpinMessage(int channelId, int messageId);
+    Q_INVOKABLE void requestPins(int channelId);
+    Q_INVOKABLE void requestMembers(int serverId);   // [Polish] cho @-autocomplete
     Q_INVOKABLE qint64 getLocalFileSize(const QString& localPathOrUrl);
     Q_INVOKABLE void deleteCustomEmoji(int serverId, const QString& shortcode);
     Q_INVOKABLE void renameCustomEmoji(int serverId, const QString& oldShortcode,
@@ -93,6 +101,11 @@ signals:
     void friendsReceived(QVariantList friends);   // [{user_id, username, display_name, avatar_url, status, incoming}]
     void dmListReceived(QVariantList dms);        // [{channel_id, user_id, username, display_name, avatar_url}]
     void dmOpened(int channelId, QVariantMap otherUser);
+    // [M7] Tìm kiếm & ghim
+    void searchResults(QString query, QVariantList results, bool hasMore);
+    void pinsReceived(int channelId, QJsonArray pins);
+    void pinsChanged(int channelId);
+    void membersReceived(int serverId, QVariantList members);   // [Polish] @-autocomplete
 
 private slots:
     void onConnected();

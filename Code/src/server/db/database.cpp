@@ -194,6 +194,17 @@ void Database::run_migrations() {
     db_.exec(
         "CREATE INDEX IF NOT EXISTS idx_dm_user ON dm_participants(user_id)"
     );
+
+    // [M7] Tin nhắn được ghim theo channel.
+    db_.exec(
+        "CREATE TABLE IF NOT EXISTS pins ("
+        "  channel_id INTEGER NOT NULL,"
+        "  message_id INTEGER NOT NULL,"
+        "  pinned_by  INTEGER NOT NULL,"
+        "  pinned_at  INTEGER NOT NULL,"
+        "  PRIMARY KEY (channel_id, message_id)"
+        ")"
+    );
 }
 
 void Database::seed_defaults() {
@@ -600,6 +611,24 @@ std::unordered_set<uint32_t> Database::member_ids(uint32_t server_id) {
     return out;
 }
 
+std::vector<UserRecord> Database::members_of(uint32_t server_id) {
+    std::vector<UserRecord> out;
+    SQLite::Statement q(db_,
+        "SELECT u.id, u.username, u.display_name, u.avatar_url "
+        "FROM server_members sm JOIN users u ON u.id = sm.user_id "
+        "WHERE sm.server_id = ? ORDER BY u.username COLLATE NOCASE");
+    q.bind(1, server_id);
+    while (q.executeStep()) {
+        UserRecord r;
+        r.id           = q.getColumn(0).getUInt();
+        r.username     = q.getColumn(1).getString();
+        r.display_name = q.getColumn(2).isNull() ? std::string() : q.getColumn(2).getString();
+        r.avatar_url   = q.getColumn(3).isNull() ? std::string() : q.getColumn(3).getString();
+        out.push_back(std::move(r));
+    }
+    return out;
+}
+
 std::vector<ServerRecord> Database::servers_for_user(uint32_t user_id) {
     std::vector<ServerRecord> out;
     SQLite::Statement q(db_,
@@ -905,6 +934,120 @@ std::unordered_set<uint32_t> Database::dm_participant_ids(uint32_t channel_id) {
     q.bind(1, channel_id);
     while (q.executeStep())
         out.insert(q.getColumn(0).getUInt());
+    return out;
+}
+
+// ─── [M7] Tìm kiếm & Ghim ────────────────────────────────────────
+std::vector<SearchHit> Database::search_messages(uint32_t user_id, const std::string& query,
+                                                 const std::string& scope, uint32_t scope_id,
+                                                 uint32_t before_id, int limit) {
+    std::vector<SearchHit> out;
+    if (query.empty()) return out;
+
+    std::string sql =
+        "SELECT m.id, m.channel_id, c.server_id, c.name, u.username, m.content, m.created_at "
+        "FROM messages m "
+        "JOIN channels c ON c.id = m.channel_id "
+        "JOIN users u ON u.id = m.author_id "
+        "WHERE m.deleted = 0 "
+        "  AND LOWER(m.content) LIKE '%' || LOWER(?) || '%' "
+        "  AND (EXISTS (SELECT 1 FROM server_members sm "
+        "               WHERE sm.server_id = c.server_id AND sm.user_id = ?) "
+        "    OR EXISTS (SELECT 1 FROM dm_participants dp "
+        "               WHERE dp.channel_id = c.id AND dp.user_id = ?)) ";
+    if (scope == "channel")     sql += "AND m.channel_id = ? ";
+    else if (scope == "server") sql += "AND c.server_id = ? ";
+    if (before_id > 0)          sql += "AND m.id < ? ";
+    sql += "ORDER BY m.id DESC LIMIT ?";
+
+    SQLite::Statement q(db_, sql);
+    int idx = 1;
+    q.bind(idx++, query);
+    q.bind(idx++, user_id);
+    q.bind(idx++, user_id);
+    if (scope == "channel" || scope == "server") q.bind(idx++, scope_id);
+    if (before_id > 0)                           q.bind(idx++, before_id);
+    q.bind(idx++, limit);
+
+    while (q.executeStep()) {
+        SearchHit h;
+        h.id           = q.getColumn(0).getUInt();
+        h.channel_id   = q.getColumn(1).getUInt();
+        h.server_id    = q.getColumn(2).getUInt();
+        h.channel_name = q.getColumn(3).getString();
+        h.author_name  = q.getColumn(4).getString();
+        h.content      = q.getColumn(5).getString();
+        h.created_at   = q.getColumn(6).getUInt();
+        out.push_back(std::move(h));
+    }
+    return out;
+}
+
+void Database::pin_message(uint32_t channel_id, uint32_t message_id,
+                           uint32_t pinned_by, uint32_t pinned_at) {
+    std::lock_guard<std::mutex> lock(db_mutex_);
+    SQLite::Statement q(db_,
+        "INSERT OR IGNORE INTO pins (channel_id, message_id, pinned_by, pinned_at) "
+        "VALUES (?, ?, ?, ?)");
+    q.bind(1, channel_id);
+    q.bind(2, message_id);
+    q.bind(3, pinned_by);
+    q.bind(4, pinned_at);
+    q.exec();
+}
+
+void Database::unpin_message(uint32_t channel_id, uint32_t message_id) {
+    std::lock_guard<std::mutex> lock(db_mutex_);
+    SQLite::Statement q(db_,
+        "DELETE FROM pins WHERE channel_id = ? AND message_id = ?");
+    q.bind(1, channel_id);
+    q.bind(2, message_id);
+    q.exec();
+}
+
+bool Database::is_pinned(uint32_t channel_id, uint32_t message_id) {
+    SQLite::Statement q(db_,
+        "SELECT 1 FROM pins WHERE channel_id = ? AND message_id = ?");
+    q.bind(1, channel_id);
+    q.bind(2, message_id);
+    return q.executeStep();
+}
+
+std::vector<MessageRecord> Database::pins_for(uint32_t channel_id) {
+    std::vector<MessageRecord> out;
+    SQLite::Statement q(db_,
+        "SELECT m.id, m.channel_id, m.author_id, u.username, u.avatar_url, "
+        "       m.content, m.created_at, m.deleted "
+        "FROM pins p "
+        "JOIN messages m ON m.id = p.message_id "
+        "JOIN users u ON u.id = m.author_id "
+        "WHERE p.channel_id = ? "
+        "ORDER BY p.pinned_at DESC");
+    q.bind(1, channel_id);
+    while (q.executeStep()) {
+        MessageRecord rec;
+        rec.id          = q.getColumn(0).getUInt();
+        rec.channel_id  = q.getColumn(1).getUInt();
+        rec.author_id   = q.getColumn(2).getUInt();
+        rec.author_name = q.getColumn(3).getString();
+        rec.avatar_url  = q.getColumn(4).isNull() ? std::string() : q.getColumn(4).getString();
+        rec.content     = q.getColumn(5).getString();
+        rec.created_at  = q.getColumn(6).getUInt();
+        rec.deleted     = q.getColumn(7).getInt() != 0;
+        if (rec.deleted) rec.content.clear();
+        out.push_back(std::move(rec));
+    }
+    // [M7] Gắn đính kèm + nhãn thay thế cho tin chỉ có ảnh/gif/file.
+    for (auto& rec : out) {
+        if (rec.deleted) continue;
+        rec.attachments = attachments_for(rec.id);
+        if (rec.content.empty() && !rec.attachments.empty()) {
+            const std::string& k = rec.attachments[0].kind;
+            if      (k == "gif")   rec.content = "[GIF]";
+            else if (k == "image") rec.content = "[image]";
+            else                   rec.content = "[file] " + rec.attachments[0].filename;
+        }
+    }
     return out;
 }
 

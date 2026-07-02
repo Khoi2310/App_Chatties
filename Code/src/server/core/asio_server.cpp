@@ -143,6 +143,11 @@ private:
                 else if (op == "friend.list")    send_friend_list();
                 else if (op == "dm.open")        handle_dm_open(data);
                 else if (op == "dm.list")        send_dm_list();
+                else if (op == "search.messages") handle_search(data);
+                else if (op == "message.pin")     handle_pin(data);
+                else if (op == "message.unpin")   handle_unpin(data);
+                else if (op == "pins.list")       handle_pins_list(data);
+                else if (op == "members.list")    handle_members_list(data);
             }
         } catch (const std::exception& e) {
             utils::Logger::instance().warning(
@@ -336,6 +341,79 @@ private:
     }
     void notify_dm_list(uint32_t uid) {
         for (auto& conn : connections_) conn->send_dm_list_if(uid);
+    }
+
+    // ── [M7] Kiểm tra quyền xem channel (server thường hoặc DM) ──
+    bool can_access(uint32_t channel_id, uint32_t& server_id_out) {
+        server_id_out = db_.channel_server_id(channel_id);
+        return (server_id_out != 0 && db_.is_member(user_id_, server_id_out))
+            || (server_id_out == 0 && db_.is_dm_participant(user_id_, channel_id));
+    }
+
+    // ── [M7] Tìm kiếm tin nhắn ──────────────────────────────────
+    void handle_search(const nlohmann::json& data) {
+        std::string query    = data.value("query", std::string());
+        std::string scope    = data.value("scope", std::string("all"));
+        uint32_t    scope_id = data.value("scope_id", 0u);
+        uint32_t    before_id= data.value("before_id", 0u);
+        const int   limit    = 25;
+        nlohmann::json arr = nlohmann::json::array();
+        for (const auto& h : db_.search_messages(user_id_, query, scope, scope_id,
+                                                 before_id, limit + 1)) {
+            arr.push_back({
+                {"id", h.id}, {"channel_id", h.channel_id}, {"server_id", h.server_id},
+                {"channel_name", h.channel_name}, {"author_name", h.author_name},
+                {"content", h.content}, {"created_at", h.created_at}
+            });
+        }
+        bool has_more = arr.size() > static_cast<size_t>(limit);
+        if (has_more) arr.erase(arr.begin() + limit);
+        send_op("search.results",
+                { {"query", query}, {"results", arr}, {"has_more", has_more} });
+    }
+
+    // ── [M7] Ghim / bỏ ghim ─────────────────────────────────────
+    void handle_pin(const nlohmann::json& data) {
+        uint32_t channel_id = data.value("channel_id", 0u);
+        uint32_t message_id = data.value("message_id", 0u);
+        uint32_t server_id  = 0;
+        if (!can_access(channel_id, server_id)) return;
+        if (db_.message_channel(message_id) != channel_id) return;
+        uint32_t ts = static_cast<uint32_t>(
+            std::chrono::duration_cast<std::chrono::seconds>(
+                std::chrono::system_clock::now().time_since_epoch()).count());
+        db_.pin_message(channel_id, message_id, user_id_, ts);
+        broadcast_to_channel(channel_id, "pins.changed", { {"channel_id", channel_id} });
+    }
+    void handle_unpin(const nlohmann::json& data) {
+        uint32_t channel_id = data.value("channel_id", 0u);
+        uint32_t message_id = data.value("message_id", 0u);
+        uint32_t server_id  = 0;
+        if (!can_access(channel_id, server_id)) return;
+        db_.unpin_message(channel_id, message_id);
+        broadcast_to_channel(channel_id, "pins.changed", { {"channel_id", channel_id} });
+    }
+    void handle_pins_list(const nlohmann::json& data) {
+        uint32_t channel_id = data.value("channel_id", 0u);
+        uint32_t server_id  = 0;
+        if (!can_access(channel_id, server_id)) return;
+        nlohmann::json arr = nlohmann::json::array();
+        for (const auto& m : db_.pins_for(channel_id))
+            arr.push_back(message_to_json(m));
+        send_op("pins.list", { {"channel_id", channel_id}, {"pins", arr} });
+    }
+
+    // [Polish] Danh sách thành viên server (cho @-autocomplete).
+    void handle_members_list(const nlohmann::json& data) {
+        uint32_t server_id = data.value("server_id", 0u);
+        if (!db_.is_member(user_id_, server_id)) return;
+        nlohmann::json arr = nlohmann::json::array();
+        for (const auto& m : db_.members_of(server_id))
+            arr.push_back({
+                {"user_id", m.id}, {"username", m.username},
+                {"display_name", m.display_name}, {"avatar_url", m.avatar_url}
+            });
+        send_op("members.list", { {"server_id", server_id}, {"members", arr} });
     }
 
     // ── Gửi tin nhắn ─────────────────────────────────────────────

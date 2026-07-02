@@ -47,6 +47,9 @@ public:
     QVariant data(const QModelIndex& index, int role) const override;
     QHash<int, QByteArray> roleNames() const override;
 
+    // [M7] Chỉ số của tin nhắn theo id (để cuộn tới); -1 nếu không có trong model.
+    Q_INVOKABLE int indexOfMessage(int id) const;
+
 public slots:
     void appendMessage(const QJsonObject& msg);
     void loadHistory(const QJsonArray& messages);
