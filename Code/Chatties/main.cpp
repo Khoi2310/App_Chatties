@@ -15,6 +15,10 @@ int main(int argc, char* argv[])
 
     QApplication app(argc, argv);
 
+    // [Auth] Định danh cho QSettings (nhớ đăng nhập).
+    QCoreApplication::setOrganizationName("Chatties");
+    QCoreApplication::setApplicationName("Chatties");
+
     // Dùng style Material để có giao diện tối hiện đại.
     QQuickStyle::setStyle("Material");
 
