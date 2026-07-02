@@ -2496,9 +2496,14 @@ Item {
         function onCustomEmojisReceived(emojis) {
             root.customEmojis = emojis
             var m = ({})
-            for (var i = 0; i < emojis.length; ++i)
+            var dict = ({})
+            for (var i = 0; i < emojis.length; ++i) {
                 m[emojis[i].shortcode] = emojis[i].url
+                dict[emojis[i].shortcode] = emojis[i].url
+            }
             root.emojiMap = m
+            // [Fix] Cũng nạp customEmojiDictionary để react bằng emoji tùy chỉnh + render chip.
+            root.customEmojiDictionary = dict
         }
         function onGifResults(gifs) {
             root.gifResults = gifs
