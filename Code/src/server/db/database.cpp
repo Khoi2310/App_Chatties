@@ -424,7 +424,8 @@ uint32_t Database::message_channel(uint32_t message_id) {
 
 std::optional<MessageRecord> Database::message_by_id(uint32_t message_id) {
     SQLite::Statement q(db_,
-        "SELECT m.id, m.channel_id, m.author_id, u.username, u.avatar_url, "
+        "SELECT m.id, m.channel_id, m.author_id, "
+        "       COALESCE(NULLIF(u.display_name,''), u.username), u.avatar_url, "
         "       m.content, m.created_at, m.deleted, m.forwarded_from "
         "FROM messages m JOIN users u ON u.id = m.author_id "
         "WHERE m.id = ?");
@@ -456,9 +457,12 @@ std::vector<MessageRecord> Database::recent_messages(uint32_t channel_id, int li
     std::vector<MessageRecord> result;
 
     SQLite::Statement q(db_,
-        "SELECT m.id, m.channel_id, m.author_id, u.username, u.avatar_url, m.content, m.created_at, "
+        "SELECT m.id, m.channel_id, m.author_id, "
+        "       COALESCE(NULLIF(u.display_name,''), u.username), u.avatar_url, "
+        "       m.content, m.created_at, "
         "       m.edited_at, m.deleted, "
-        "       m.reply_to_id, ru.username, rm.content, rm.deleted, "
+        "       m.reply_to_id, COALESCE(NULLIF(ru.display_name,''), ru.username), "
+        "       rm.content, rm.deleted, "
         "       (SELECT COUNT(*) FROM attachments a WHERE a.message_id = rm.id), "
         "       m.forwarded_from "
         "FROM messages m "
@@ -980,7 +984,8 @@ std::vector<SearchHit> Database::search_messages(uint32_t user_id, const std::st
     if (query.empty()) return out;
 
     std::string sql =
-        "SELECT m.id, m.channel_id, c.server_id, c.name, u.username, m.content, m.created_at "
+        "SELECT m.id, m.channel_id, c.server_id, c.name, "
+        "       COALESCE(NULLIF(u.display_name,''), u.username), m.content, m.created_at "
         "FROM messages m "
         "JOIN channels c ON c.id = m.channel_id "
         "JOIN users u ON u.id = m.author_id "
@@ -1051,7 +1056,8 @@ bool Database::is_pinned(uint32_t channel_id, uint32_t message_id) {
 std::vector<MessageRecord> Database::pins_for(uint32_t channel_id) {
     std::vector<MessageRecord> out;
     SQLite::Statement q(db_,
-        "SELECT m.id, m.channel_id, m.author_id, u.username, u.avatar_url, "
+        "SELECT m.id, m.channel_id, m.author_id, "
+        "       COALESCE(NULLIF(u.display_name,''), u.username), u.avatar_url, "
         "       m.content, m.created_at, m.deleted "
         "FROM pins p "
         "JOIN messages m ON m.id = p.message_id "
