@@ -72,6 +72,7 @@ public:
     Q_INVOKABLE void requestPins(int channelId);
     Q_INVOKABLE void requestMembers(int serverId);   // [Polish] cho @-autocomplete
     Q_INVOKABLE void forwardMessage(int messageId, int targetChannelId);  // [Forward]
+    Q_INVOKABLE void requestPresence(int serverId);  // [Presence] thành viên online
     Q_INVOKABLE qint64 getLocalFileSize(const QString& localPathOrUrl);
     Q_INVOKABLE void deleteCustomEmoji(int serverId, const QString& shortcode);
     Q_INVOKABLE void renameCustomEmoji(int serverId, const QString& oldShortcode,
@@ -112,6 +113,7 @@ signals:
     void pinsReceived(int channelId, QJsonArray pins);
     void pinsChanged(int channelId);
     void membersReceived(int serverId, QVariantList members);   // [Polish] @-autocomplete
+    void presenceReceived(int serverId, QVariantList members);  // [Presence] online members
 
 private slots:
     void onConnected();

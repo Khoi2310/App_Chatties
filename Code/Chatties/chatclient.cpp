@@ -389,6 +389,10 @@ void ChatClient::requestMembers(int serverId) {
     QJsonObject data; data["server_id"] = serverId;
     sendOp("members.list", data);
 }
+void ChatClient::requestPresence(int serverId) {
+    QJsonObject data; data["server_id"] = serverId;
+    sendOp("presence.list", data);
+}
 void ChatClient::forwardMessage(int messageId, int targetChannelId) {
     QJsonObject data;
     data["message_id"]        = messageId;
@@ -572,6 +576,19 @@ void ChatClient::onReadyRead() {
                 list.append(m);
             }
             emit membersReceived(data["server_id"].toInt(), list);
+        } else if (op == "presence.list") {
+            QVariantList list;
+            const QJsonArray arr = data["members"].toArray();
+            for (const auto& v : arr) {
+                const QJsonObject o = v.toObject();
+                QVariantMap m;
+                m["user_id"]      = o["user_id"].toInt();
+                m["username"]     = o["username"].toString();
+                m["display_name"] = o["display_name"].toString();
+                m["avatar_url"]   = o["avatar_url"].toString();
+                list.append(m);
+            }
+            emit presenceReceived(data["server_id"].toInt(), list);
         } else if (op == "error") {
             emit errorReceived(data["reason"].toString());
         }

@@ -22,6 +22,7 @@ Item {
     property var  friends: []
     property var  dms: []
     property var  dmOtherUser: ({})
+    property bool pendingOpenLastDm: false   // mở DM gần nhất khi vừa vào chế độ DM
 
     // [M7] Tìm kiếm & ghim
     property bool searchOpen: false
@@ -31,6 +32,9 @@ Item {
     property var  pinsList: []
     property var  pinnedIds: ({})     // { messageId: true } của channel hiện tại
     property int  pendingJumpId: 0
+
+    // [Presence] Thành viên đang online của server hiện tại.
+    property var  onlineMembers: []
 
     // [Polish] @-autocomplete
     property var  serverMembers: []   // [{user_id, username, display_name, avatar_url}]
@@ -78,6 +82,8 @@ Item {
         }
 
         onAboutToShow: {
+            // [Fix] Emoji tùy chỉnh chỉ có trong server — ở DM luôn về tab mặc định.
+            if (root.dmMode) reactTabBar.currentIndex = 0
             reactionCustomModel.clear()
             for (var key in root.customEmojiDictionary) {
                 if (root.customEmojiDictionary.hasOwnProperty(key)) {
@@ -114,7 +120,9 @@ Item {
                 }
                 TabButton {
                     text: "Tùy chỉnh"
-                    width: implicitWidth
+                    // [Fix] Ẩn tab emoji tùy chỉnh khi đang trong DM.
+                    visible: !root.dmMode
+                    width: root.dmMode ? 0 : implicitWidth
                     contentItem: Text {
                         text: parent.text
                         color: reactTabBar.currentIndex === 1 ? Theme.textPrimary : Theme.textMuted
@@ -247,10 +255,20 @@ Item {
         root.emojiMap = ({})
         root.customEmojis = []
         root.serverMembers = []
+        root.onlineMembers = []
         if (currentServerId !== 0) {
             chatClient.fetchCustomEmojis(currentServerId)
             chatClient.requestMembers(currentServerId)   // [Polish] cho @-autocomplete
+            chatClient.requestPresence(currentServerId)  // [Presence] thành viên online
         }
+    }
+
+    // [Presence] Poll danh sách online mỗi 5s (bắt cả online lẫn offline).
+    Timer {
+        interval: 5000
+        running: root.currentServerId !== 0
+        repeat: true
+        onTriggered: chatClient.requestPresence(root.currentServerId)
     }
 
     function selectChannel(id) {
@@ -283,6 +301,17 @@ Item {
         var idx = messageModel.indexOfMessage(messageId)
         if (idx >= 0)
             list.positionViewAtIndex(idx, ListView.Center)
+    }
+
+    // [M7] Tìm kiếm theo ngữ cảnh: trong DM hiện tại, hoặc trong server hiện tại.
+    function runSearch(q) {
+        var text = (q || "").trim()
+        if (text.length < 2) { root.searchOpen = false; return }
+        root.searchOpen = true
+        if (root.dmMode)
+            chatClient.searchMessages(text, "channel", root.currentChannelId, 0)  // DM này
+        else
+            chatClient.searchMessages(text, "server", root.currentServerId, 0)     // server này
     }
 
     // [Polish] Phát hiện @token tại con trỏ, lọc thành viên khớp.
@@ -422,6 +451,8 @@ Item {
     function enterDmMode() {
         root.dmMode = true
         currentChannelId = 0
+        messageModel.clear()            // xóa tin nhắn server cũ khỏi khung
+        root.pendingOpenLastDm = true   // mở cuộc trò chuyện DM gần nhất khi danh sách về
         chatClient.requestFriends()
         chatClient.requestDmList()
     }
@@ -929,24 +960,12 @@ Item {
                     color: Theme.textPrimary
                     background: Rectangle { color: Theme.inputBg; radius: 6 }
                     onTextChanged: searchTimer.restart()
-                    onAccepted: {
-                        if (text.trim().length >= 2) {
-                            root.searchOpen = true
-                            chatClient.searchMessages(text.trim(), "all", 0, 0)
-                        }
-                    }
+                    onAccepted: root.runSearch(text)
                 }
                 Timer {
                     id: searchTimer
                     interval: 350
-                    onTriggered: {
-                        if (searchField.text.trim().length >= 2) {
-                            root.searchOpen = true
-                            chatClient.searchMessages(searchField.text.trim(), "all", 0, 0)
-                        } else {
-                            root.searchOpen = false
-                        }
-                    }
+                    onTriggered: root.runSearch(searchField.text)
                 }
                 Label {
                     text: "📌"
@@ -2218,14 +2237,14 @@ Item {
                                     Rectangle {
                                         width: parent.width; height: 1
                                         color: Theme.inputBg
-                                        visible: root.customEmojis.length > 0
+                                        visible: root.customEmojis.length > 0 && !root.dmMode
                                     }
 
-                                    // Custom emoji của server (chèn :shortcode:)
+                                    // Custom emoji của server (chèn :shortcode:) — chỉ trong server.
                                     Grid {
                                         columns: 10
                                         spacing: 4
-                                        visible: root.customEmojis.length > 0
+                                        visible: root.customEmojis.length > 0 && !root.dmMode
                                         Repeater {
                                             model: root.customEmojis
                                             Item {
@@ -2278,6 +2297,7 @@ Item {
                                         text: qsTr("+ Add custom emoji")
                                         flat: true
                                         font.pixelSize: 12
+                                        visible: !root.dmMode   // [Fix] custom emoji chỉ dành cho server
                                         onClicked: { emojiPopup.close(); addEmojiDialog.open() }
                                     }
                                 }
@@ -2286,6 +2306,116 @@ Item {
                     }
                 }
 
+            }
+        }
+
+        // ── Cột 4: thành viên đang online ──────────────────────────
+        Rectangle {
+            Layout.fillHeight: true
+            Layout.preferredWidth: 200
+            color: Theme.surface
+
+            ColumnLayout {
+                anchors.fill: parent
+                anchors.margins: 10
+                spacing: 8
+
+                Label {
+                    text: qsTr("Online — ") + root.onlineMembers.length
+                    color: Theme.textMuted
+                    font.pixelSize: 12
+                    font.bold: true
+                    Layout.fillWidth: true
+                }
+
+                // Trạng thái trống
+                ColumnLayout {
+                    Layout.fillWidth: true
+                    Layout.fillHeight: true
+                    visible: root.onlineMembers.length === 0
+                    Item { Layout.fillHeight: true }
+                    Label {
+                        Layout.alignment: Qt.AlignHCenter
+                        text: "🌙"; font.pixelSize: 28
+                    }
+                    Label {
+                        Layout.fillWidth: true
+                        horizontalAlignment: Text.AlignHCenter
+                        wrapMode: Text.WordWrap
+                        text: qsTr("No one's online")
+                        color: Theme.textMuted; font.pixelSize: 12
+                    }
+                    Item { Layout.fillHeight: true }
+                }
+
+                // Danh sách thành viên online
+                ListView {
+                    Layout.fillWidth: true
+                    Layout.fillHeight: true
+                    clip: true
+                    visible: root.onlineMembers.length > 0
+                    model: root.onlineMembers
+                    spacing: 4
+                    delegate: Item {
+                        width: ListView.view ? ListView.view.width : 0
+                        height: 40
+                        Row {
+                            anchors.fill: parent
+                            anchors.leftMargin: 2
+                            spacing: 8
+                            Item {
+                                width: 32; height: 32
+                                anchors.verticalCenter: parent.verticalCenter
+                                Rectangle {
+                                    anchors.fill: parent
+                                    radius: 16
+                                    clip: true
+                                    color: root.avatarBackgroundColor(modelData.avatar_url,
+                                               modelData.display_name || modelData.username)
+                                    Label {
+                                        anchors.centerIn: parent
+                                        visible: !(modelData.avatar_url && modelData.avatar_url.length > 0)
+                                        text: root.avatarInitial(modelData.display_name || modelData.username)
+                                        color: Theme.textPrimary; font.bold: true; font.pixelSize: 13
+                                    }
+                                    Image {
+                                        anchors.fill: parent
+                                        anchors.margins: root.avatarImageMargins(parent.width, modelData.avatar_url)
+                                        visible: modelData.avatar_url && modelData.avatar_url.length > 0
+                                        source: root.avatarImageSource(modelData.avatar_url)
+                                        fillMode: PresetAvatars.isPresetUrl(modelData.avatar_url)
+                                                  ? Image.PreserveAspectFit : Image.PreserveAspectCrop
+                                        asynchronous: true; cache: true
+                                    }
+                                }
+                                // chấm xanh "online"
+                                Rectangle {
+                                    width: 11; height: 11; radius: 5.5
+                                    color: "#3ba55d"
+                                    border.color: Theme.surface; border.width: 2
+                                    anchors.right: parent.right
+                                    anchors.bottom: parent.bottom
+                                }
+                            }
+                            Column {
+                                anchors.verticalCenter: parent.verticalCenter
+                                spacing: 0
+                                Label {
+                                    text: (modelData.display_name && modelData.display_name.length > 0)
+                                          ? modelData.display_name : modelData.username
+                                    color: Theme.textPrimary
+                                    font.pixelSize: 13
+                                    elide: Text.ElideRight
+                                }
+                                Label {
+                                    text: qsTr("online")
+                                    color: "#3ba55d"
+                                    font.pixelSize: 10
+                                }
+                            }
+                        }
+                    }
+                }
             }
         }
     }
@@ -2466,7 +2596,17 @@ Item {
         }
         // [M6-6B] Bạn bè & DM
         function onFriendsReceived(friends) { root.friends = friends }
-        function onDmListReceived(dms) { root.dms = dms }
+        function onDmListReceived(dms) {
+            root.dms = dms
+            // [Fix] Vừa vào DM → mở cuộc trò chuyện gần nhất (dms[0] = mới nhất).
+            if (root.pendingOpenLastDm) {
+                root.pendingOpenLastDm = false
+                if (dms.length > 0) {
+                    root.dmOtherUser = dms[0]
+                    root.selectChannel(dms[0].channel_id)
+                }
+            }
+        }
         function onDmOpened(channelId, otherUser) {
             root.dmMode = true
             root.dmOtherUser = otherUser
@@ -2492,6 +2632,10 @@ Item {
         function onMembersReceived(serverId, members) {
             if (serverId === root.currentServerId)
                 root.serverMembers = members
+        }
+        function onPresenceReceived(serverId, members) {
+            if (serverId === root.currentServerId)
+                root.onlineMembers = members
         }
         function onCustomEmojisReceived(emojis) {
             root.customEmojis = emojis

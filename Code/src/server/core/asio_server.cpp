@@ -42,6 +42,7 @@ public:
     }
 
     bool is_authenticated() const { return state_ == State::Authenticated; }
+    uint32_t user_id() const { return user_id_; }   // [Presence] cho danh sách online
     bool is_viewing(uint32_t channel_id) const {
         return state_ == State::Authenticated && current_channel_id_ == channel_id;
     }
@@ -149,6 +150,7 @@ private:
                 else if (op == "pins.list")       handle_pins_list(data);
                 else if (op == "members.list")    handle_members_list(data);
                 else if (op == "message.forward") handle_message_forward(data);
+                else if (op == "presence.list")   handle_presence_list(data);
             }
         } catch (const std::exception& e) {
             utils::Logger::instance().warning(
@@ -404,6 +406,24 @@ private:
         send_op("pins.list", { {"channel_id", channel_id}, {"pins", arr} });
     }
 
+    // [Presence] Thành viên đang online của 1 server.
+    void handle_presence_list(const nlohmann::json& data) {
+        uint32_t server_id = data.value("server_id", 0u);
+        if (!db_.is_member(user_id_, server_id)) return;
+        // Tập user_id đang có kết nối đã xác thực.
+        std::unordered_set<uint32_t> online;
+        for (auto& c : connections_)
+            if (c->is_authenticated()) online.insert(c->user_id());
+        nlohmann::json arr = nlohmann::json::array();
+        for (const auto& m : db_.members_of(server_id))
+            if (online.count(m.id))
+                arr.push_back({
+                    {"user_id", m.id}, {"username", m.username},
+                    {"display_name", m.display_name}, {"avatar_url", m.avatar_url}
+                });
+        send_op("presence.list", { {"server_id", server_id}, {"members", arr} });
+    }
+
     // [Polish] Danh sách thành viên server (cho @-autocomplete).
     void handle_members_list(const nlohmann::json& data) {
         uint32_t server_id = data.value("server_id", 0u);
@@ -650,8 +670,9 @@ private:
         if (id == 0 || emoji.empty()) return;
 
         uint32_t channel_id = db_.message_channel(id);
-        uint32_t server_id  = db_.channel_server_id(channel_id);
-        if (server_id == 0 || !db_.is_member(user_id_, server_id)) {
+        uint32_t server_id  = 0;
+        // [Fix] Cho phép reaction ở cả kênh server lẫn DM (server_id = 0).
+        if (!can_access(channel_id, server_id)) {
             send_error("You don't have access to this channel.");
             return;
         }

@@ -143,7 +143,12 @@ void MessageModel::markDeleted(int id) {
             items_[i].attachments.clear();
             emit dataChanged(index(i), index(i),
                              { ContentRole, DeletedRole, AttachmentsRole });
-            return;
+        }
+        // [Fix] Tin nào đang trả lời tới tin vừa bị xóa → cập nhật preview thành [deleted]
+        // để không lộ nội dung đã xóa (khớp với hành vi khi tải lại lịch sử).
+        if (items_[i].replyToId == id && items_[i].replyExcerpt != QStringLiteral("[deleted]")) {
+            items_[i].replyExcerpt = QStringLiteral("[deleted]");
+            emit dataChanged(index(i), index(i), { ReplyExcerptRole });
         }
     }
 }

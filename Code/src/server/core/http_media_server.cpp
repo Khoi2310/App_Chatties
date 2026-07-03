@@ -76,6 +76,20 @@ static std::string urlEncode(const std::string& s) {
     return out;
 }
 
+// Chặn các đuôi file nguy hiểm: mã thực thi hoặc có thể chạy script khi mở trong trình duyệt.
+static bool isBlockedExt(std::string ext) {
+    std::transform(ext.begin(), ext.end(), ext.begin(),
+                   [](unsigned char c){ return static_cast<char>(std::tolower(c)); });
+    static const char* blocked[] = {
+        ".exe", ".bat", ".cmd", ".com", ".scr", ".msi", ".dll", ".pif", ".cpl", ".hta",
+        ".js", ".jse", ".vbs", ".vbe", ".ps1", ".psm1", ".sh", ".jar",
+        ".html", ".htm", ".xhtml", ".shtml", ".svg"
+    };
+    for (const char* b : blocked)
+        if (ext == b) return true;
+    return false;
+}
+
 // Lấy đuôi file an toàn từ tên gốc (chỉ '.', chữ và số, tối đa 10 ký tự).
 static std::string safeExtFromFilename(const std::string& name) {
     auto dot = name.find_last_of('.');
@@ -135,6 +149,14 @@ void HttpMediaServer::setupRoutes() {
             if (ext.empty()) ext = ".bin";
         }
 
+        // [An toàn] Chặn file thực thi / có thể chạy script.
+        if (isBlockedExt(ext)) {
+            res.status = 415;   // Unsupported Media Type
+            res.set_content(nlohmann::json{{"error", "file type not allowed"}}.dump(),
+                            "application/json");
+            return;
+        }
+
         const std::string safe_name = generateSafeFilename("upload" + ext);
         const std::string full_path = m_storage_path + "/" + safe_name;
 
@@ -183,9 +205,21 @@ void HttpMediaServer::setupRoutes() {
             return;
         }
 
+        // [An toàn] Emoji ≤ 1MB và bắt buộc là ảnh.
+        if (req.body.size() > 1024 * 1024) {
+            res.status = 413;   // Payload Too Large
+            res.set_content(nlohmann::json{{"error", "emoji too large (max 1 MB)"}}.dump(),
+                            "application/json");
+            return;
+        }
         const std::string ct = req.get_header_value("Content-Type");
         std::string ext = extFromContentType(ct);
-        if (ext.empty()) ext = ".png";   // emoji mặc định PNG
+        if (ext.empty() || ext == ".mp4") {   // chỉ chấp nhận PNG/JPG/GIF/WEBP
+            res.status = 415;
+            res.set_content(nlohmann::json{{"error", "emoji must be a PNG/JPG/GIF/WEBP image"}}.dump(),
+                            "application/json");
+            return;
+        }
 
         const std::string safe_name = generateSafeFilename("emoji" + ext);
         const std::string full_path = m_storage_path + "/" + safe_name;
