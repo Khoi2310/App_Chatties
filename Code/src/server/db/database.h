@@ -48,6 +48,7 @@ struct MessageRecord {
     std::string reply_excerpt;       // preview: trích nội dung
     uint32_t    edited_at = 0;       // 0 = chưa sửa
     bool        deleted   = false;
+    std::string forwarded_from;      // tên tác giả gốc nếu là tin chuyển tiếp
     std::vector<ReactionCount> reactions;
     std::vector<AttachmentRecord> attachments;
 };
@@ -153,6 +154,10 @@ public:
     void     delete_message(uint32_t message_id);
     uint32_t message_author(uint32_t message_id);   // 0 nếu không tồn tại
     uint32_t message_channel(uint32_t message_id);  // 0 nếu không tồn tại
+
+    // [Forward] Lấy 1 tin nhắn (kèm đính kèm) theo id; đánh dấu tin chuyển tiếp.
+    std::optional<MessageRecord> message_by_id(uint32_t message_id);
+    void set_forwarded_from(uint32_t message_id, const std::string& name);
 
     // ─── Reaction ────────────────────────────────────────────────
     void add_reaction(uint32_t message_id, uint32_t user_id, const std::string& emoji);

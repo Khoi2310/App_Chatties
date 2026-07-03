@@ -41,6 +41,10 @@ ApplicationWindow {
             window.loggedIn = false
             window.servers = []
         }
+        function onLoggedOut() {
+            window.loggedIn = false
+            window.servers = []
+        }
         function onServersReceived(servers) { window.servers = servers }
     }
 }

@@ -1,5 +1,6 @@
 #include "chatclient.h"
 #include <QDebug>
+#include <QSettings>
 #include <QJsonDocument>
 #include <QVariantMap>
 #include <QFile>
@@ -28,6 +29,11 @@ ChatClient::ChatClient(QObject* parent)
     reconnectTimer_->setInterval(2000);
     connect(reconnectTimer_, &QTimer::timeout,
             this, &ChatClient::tryReconnect);
+
+    // [Auth] Nạp thông tin đăng nhập đã lưu (nếu có) để tự đăng nhập.
+    QSettings s;
+    lastUser_ = s.value("auth/username").toString();
+    lastPass_ = s.value("auth/password").toString();
 }
 
 void ChatClient::connectToServer(const QString& host, quint16 port) {
@@ -73,10 +79,33 @@ void ChatClient::registerUser(const QString& username,
 }
 
 void ChatClient::login(const QString& username, const QString& password) {
+    lastUser_ = username;
+    lastPass_ = password;
+    manualLogout_ = false;
     QJsonObject data;
     data["username"] = username;
     data["password"] = password;
     sendOp("auth.login", data);
+}
+
+void ChatClient::logout() {
+    // Xóa thông tin nhớ đăng nhập.
+    QSettings s;
+    s.remove("auth/username");
+    s.remove("auth/password");
+    lastUser_.clear();
+    lastPass_.clear();
+    manualLogout_ = true;
+    currentChannelId_ = 0;
+    emit loggedOut();
+    // Ngắt kết nối → onDisconnected sẽ đưa về màn đăng nhập và tự kết nối lại.
+    socket_->abort();
+    if (port_ != 0)
+        reconnectTimer_->start();
+}
+
+bool ChatClient::hasSavedCredentials() const {
+    return !lastUser_.isEmpty();
 }
 
 void ChatClient::sendMessage(const QString& content, int replyToId,
@@ -360,10 +389,24 @@ void ChatClient::requestMembers(int serverId) {
     QJsonObject data; data["server_id"] = serverId;
     sendOp("members.list", data);
 }
+void ChatClient::forwardMessage(int messageId, int targetChannelId) {
+    QJsonObject data;
+    data["message_id"]        = messageId;
+    data["target_channel_id"] = targetChannelId;
+    sendOp("message.forward", data);
+}
 
 void ChatClient::onConnected() {
     reconnectTimer_->stop();         // đã kết nối, ngừng thử lại
     emit connected();
+    // [Auth] Tự đăng nhập lại nếu có thông tin nhớ (và không phải vừa logout).
+    // Cũng giúp tự xác thực lại sau khi mất kết nối tạm thời.
+    if (!manualLogout_ && !lastUser_.isEmpty()) {
+        QJsonObject data;
+        data["username"] = lastUser_;
+        data["password"] = lastPass_;
+        sendOp("auth.login", data);
+    }
 }
 
 void ChatClient::onDisconnected() {
@@ -388,12 +431,23 @@ void ChatClient::onReadyRead() {
         QJsonObject data = env["data"].toObject();
 
         if (op == "auth.ok") {
+            // [Auth] Ghi nhớ đăng nhập cho lần mở app sau.
+            QSettings s;
+            s.setValue("auth/username", lastUser_);
+            s.setValue("auth/password", lastPass_);
             emit authOk(data["user_id"].toInt(),
                         data["username"].toString(),
                         data["display_name"].toString(),
                         data["avatar_url"].toString(),
                         data["bio"].toString());
         } else if (op == "auth.error") {
+            // [Auth] Thông tin nhớ sai → xóa để không tự đăng nhập lặp lại.
+            QSettings s;
+            s.remove("auth/username");
+            s.remove("auth/password");
+            lastUser_.clear();
+            lastPass_.clear();
+            manualLogout_ = true;
             emit authError(data["reason"].toString());
         } else if (op == "ready") {
             emit serversReceived(data["servers"].toArray());

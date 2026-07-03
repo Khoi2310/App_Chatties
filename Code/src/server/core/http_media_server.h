@@ -30,10 +30,6 @@ private:
 
     chatties::server::db::Database& m_db;
 
-    // === BỔ SUNG CHO TENOR GIF PROXY ===
-    std::string m_giphy_api_key = "knLYOfVvbqh3Y1ZeDNYoSh0aG7bKdaBi"; // Thay key thật của bạn vào đây
-    void handleGifSearch(const httplib::Request& req, httplib::Response& res);
-
     void setupRoutes();
     std::string generateSafeFilename(const std::string& original_filename);
     std::string mediaUrl(const std::string& safe_name) const;

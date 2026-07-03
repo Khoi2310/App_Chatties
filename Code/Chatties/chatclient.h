@@ -22,6 +22,10 @@ public:
                                   const QString& password,
                                   const QString& displayName);
     Q_INVOKABLE void login(const QString& username, const QString& password);
+    // [Auth] Đăng xuất: xóa thông tin nhớ + reset + phát loggedOut.
+    Q_INVOKABLE void logout();
+    // [Auth] Có thông tin đăng nhập đã lưu không (để tự đăng nhập lúc mở app).
+    Q_INVOKABLE bool hasSavedCredentials() const;
     Q_INVOKABLE void sendMessage(const QString& content, int replyToId = 0,
                                  const QVariantList& attachments = {});
 
@@ -67,6 +71,7 @@ public:
     Q_INVOKABLE void unpinMessage(int channelId, int messageId);
     Q_INVOKABLE void requestPins(int channelId);
     Q_INVOKABLE void requestMembers(int serverId);   // [Polish] cho @-autocomplete
+    Q_INVOKABLE void forwardMessage(int messageId, int targetChannelId);  // [Forward]
     Q_INVOKABLE qint64 getLocalFileSize(const QString& localPathOrUrl);
     Q_INVOKABLE void deleteCustomEmoji(int serverId, const QString& shortcode);
     Q_INVOKABLE void renameCustomEmoji(int serverId, const QString& oldShortcode,
@@ -75,6 +80,7 @@ public:
 signals:
     void connected();
     void disconnected();
+    void loggedOut();          // [Auth] người dùng đã đăng xuất
     void authOk(int userId, QString username, QString displayName, QString avatarUrl, QString bio);
     void authError(QString reason);
     void serversReceived(QJsonArray servers);
@@ -123,4 +129,9 @@ private:
     QString                 host_;
     quint16                 port_ = 0;
     int                     currentChannelId_ = 0;
+
+    // [Auth] Nhớ đăng nhập / tự đăng nhập lại.
+    QString                 lastUser_;
+    QString                 lastPass_;
+    bool                    manualLogout_ = false;
 };

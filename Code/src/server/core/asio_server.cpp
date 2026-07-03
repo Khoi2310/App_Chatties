@@ -148,6 +148,7 @@ private:
                 else if (op == "message.unpin")   handle_unpin(data);
                 else if (op == "pins.list")       handle_pins_list(data);
                 else if (op == "members.list")    handle_members_list(data);
+                else if (op == "message.forward") handle_message_forward(data);
             }
         } catch (const std::exception& e) {
             utils::Logger::instance().warning(
@@ -416,6 +417,61 @@ private:
         send_op("members.list", { {"server_id", server_id}, {"members", arr} });
     }
 
+    // [Forward] Chuyển tiếp 1 tin nhắn sang channel/DM khác.
+    void handle_message_forward(const nlohmann::json& data) {
+        uint32_t src_id    = data.value("message_id", 0u);
+        uint32_t target_ch = data.value("target_channel_id", 0u);
+        uint32_t s1 = 0, s2 = 0;
+
+        // Phải xem được cả nguồn lẫn đích.
+        uint32_t src_ch = db_.message_channel(src_id);
+        if (src_ch == 0 || !can_access(src_ch, s1)) return;
+        if (!can_access(target_ch, s2)) return;
+
+        auto src = db_.message_by_id(src_id);
+        if (!src || src->deleted) return;
+        if (src->content.empty() && src->attachments.empty()) return;
+
+        // Giữ nguồn gốc nếu tin nguồn vốn cũng là forward.
+        std::string origin = src->forwarded_from.empty()
+                             ? src->author_name : src->forwarded_from;
+
+        uint32_t ts = static_cast<uint32_t>(
+            std::chrono::duration_cast<std::chrono::seconds>(
+                std::chrono::system_clock::now().time_since_epoch()).count());
+        uint32_t new_id = db_.insert_message(target_ch, user_id_, src->content, ts, 0);
+        db_.set_forwarded_from(new_id, origin);
+        for (const auto& a : src->attachments)
+            db_.add_attachment(new_id, a.url, a.kind, a.filename, a.size);
+
+        db::MessageRecord rec;
+        rec.id             = new_id;
+        rec.channel_id     = target_ch;
+        rec.author_id      = user_id_;
+        rec.author_name    = display_name_.empty() ? username_ : display_name_;
+        rec.avatar_url     = avatar_url_;
+        rec.content        = src->content;
+        rec.created_at     = ts;
+        rec.forwarded_from = origin;
+        rec.attachments    = src->attachments;
+
+        nlohmann::json env;
+        env["op"]   = "message.create";
+        env["data"] = message_to_json(rec);
+        std::string payload = env.dump(-1, ' ', false,
+                                       nlohmann::json::error_handler_t::replace) + "\n";
+        for (auto& conn : connections_)
+            if (conn->is_viewing(target_ch)) conn->deliver(payload);
+
+        // Báo unread cho thành viên/đối phương không đang xem.
+        std::unordered_set<uint32_t> members = (s2 != 0)
+            ? db_.member_ids(s2)
+            : db_.dm_participant_ids(target_ch);
+        nlohmann::json activity = { {"channel_id", target_ch} };
+        for (auto& conn : connections_)
+            conn->notify_activity_if(members, target_ch, activity);
+    }
+
     // ── Gửi tin nhắn ─────────────────────────────────────────────
     void handle_message_create(const nlohmann::json& data) {
         uint32_t channel_id  = data.value("channel_id", 0u);
@@ -451,7 +507,7 @@ private:
         rec.id          = id;
         rec.channel_id  = channel_id;
         rec.author_id   = user_id_;
-        rec.author_name = display_name_;
+        rec.author_name = display_name_.empty() ? username_ : display_name_;
         rec.avatar_url  = avatar_url_;
         rec.content     = content;
         rec.created_at  = ts;
@@ -728,6 +784,7 @@ private:
             {"reply_excerpt",  m.reply_excerpt},
             {"edited_at",      m.edited_at},
             {"deleted",        m.deleted},
+            {"forwarded_from", m.forwarded_from},
             {"reactions",      reactions_to_json(m.reactions)},
             {"attachments",    attachments_to_json(m.attachments)}
         };
