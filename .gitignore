@@ -79,3 +79,6 @@ media_storage/*
 
 # Bỏ chặn file cấu hình Icon cho Windows
 !chatties.rc
+
+*.zip
+*.rar
