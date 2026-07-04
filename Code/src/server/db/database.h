@@ -172,6 +172,13 @@ public:
     bool     is_member(uint32_t user_id, uint32_t server_id);
     bool     server_exists(uint32_t server_id);
 
+    // Chủ sở hữu server (owner_id); 0 nếu không tồn tại.
+    uint32_t server_owner(uint32_t server_id);
+    // Xóa server (và toàn bộ channel/tin nhắn/emoji/thành viên liên quan).
+    void     delete_server(uint32_t server_id);
+    // Xóa 1 channel (và tin nhắn/reaction/đính kèm/ghim liên quan).
+    void     delete_channel(uint32_t channel_id);
+
     // Returns the set of user_ids that are members of server_id (single query).
     std::unordered_set<uint32_t> member_ids(uint32_t server_id);
 

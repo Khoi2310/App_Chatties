@@ -136,6 +136,8 @@ private:
                 else if (op == "server.create")  handle_server_create(data);
                 else if (op == "server.join")    handle_server_join(data);
                 else if (op == "channel.create") handle_channel_create(data);
+                else if (op == "server.delete")  handle_server_delete(data);
+                else if (op == "channel.delete") handle_channel_delete(data);
                 else if (op == "profile.update") handle_profile_update(data);
                 else if (op == "user.profile")   handle_user_profile(data);
                 else if (op == "friend.request") handle_friend_request(data);
@@ -214,7 +216,8 @@ private:
                 });
             }
             servers.push_back({
-                {"id", s.id}, {"name", s.name}, {"channels", channels}
+                {"id", s.id}, {"name", s.name}, {"owner_id", s.owner_id},
+                {"channels", channels}
             });
         }
         send_op("ready", {
@@ -769,6 +772,34 @@ private:
         }
         db_.create_channel(server_id, name);
         auto members = db_.member_ids(server_id);
+        for (auto& conn : connections_) conn->refresh_ready_if_user_in(members);
+    }
+
+    // [Delete] Xóa server — chỉ chủ sở hữu.
+    void handle_server_delete(const nlohmann::json& data) {
+        uint32_t server_id = data.value("server_id", 0u);
+        if (server_id == 0) return;
+        if (db_.server_owner(server_id) != user_id_) {
+            send_error("Only the server owner can delete it.");
+            return;
+        }
+        // Lưu thành viên TRƯỚC khi xóa để còn refresh danh sách của họ.
+        auto members = db_.member_ids(server_id);
+        db_.delete_server(server_id);
+        for (auto& conn : connections_) conn->refresh_ready_if_user_in(members);
+    }
+
+    // [Delete] Xóa channel — chỉ chủ sở hữu server.
+    void handle_channel_delete(const nlohmann::json& data) {
+        uint32_t channel_id = data.value("channel_id", 0u);
+        if (channel_id == 0) return;
+        uint32_t server_id = db_.channel_server_id(channel_id);
+        if (server_id == 0 || db_.server_owner(server_id) != user_id_) {
+            send_error("Only the server owner can delete channels.");
+            return;
+        }
+        auto members = db_.member_ids(server_id);
+        db_.delete_channel(channel_id);
         for (auto& conn : connections_) conn->refresh_ready_if_user_in(members);
     }
 

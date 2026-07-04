@@ -52,6 +52,8 @@ public:
     Q_INVOKABLE void createServer(const QString& name);
     Q_INVOKABLE void joinServer(int serverId);
     Q_INVOKABLE void createChannel(int serverId, const QString& name);
+    Q_INVOKABLE void deleteServer(int serverId);       // [Delete] chủ server xóa server
+    Q_INVOKABLE void deleteChannel(int channelId);     // [Delete] chủ server xóa channel
     Q_INVOKABLE void selectChannel(int channelId);
     // [M6] Đánh dấu đã đọc channel tới message id.
     Q_INVOKABLE void markChannelRead(int channelId, int lastMsgId);

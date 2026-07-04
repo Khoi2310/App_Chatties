@@ -616,6 +616,54 @@ uint32_t Database::create_channel(uint32_t server_id, const std::string& name) {
     return static_cast<uint32_t>(db_.getLastInsertRowid());
 }
 
+uint32_t Database::server_owner(uint32_t server_id) {
+    SQLite::Statement q(db_, "SELECT owner_id FROM servers WHERE id = ?");
+    q.bind(1, server_id);
+    if (q.executeStep()) return q.getColumn(0).getUInt();
+    return 0;
+}
+
+void Database::delete_server(uint32_t server_id) {
+    std::lock_guard<std::mutex> lock(db_mutex_);
+    auto run = [&](const char* sql) {
+        SQLite::Statement q(db_, sql);
+        q.bind(1, server_id);
+        q.exec();
+    };
+    // Xóa dữ liệu con của các tin nhắn thuộc mọi channel của server.
+    run("DELETE FROM reactions   WHERE message_id IN (SELECT id FROM messages "
+        "WHERE channel_id IN (SELECT id FROM channels WHERE server_id = ?))");
+    run("DELETE FROM attachments WHERE message_id IN (SELECT id FROM messages "
+        "WHERE channel_id IN (SELECT id FROM channels WHERE server_id = ?))");
+    run("DELETE FROM mentions    WHERE message_id IN (SELECT id FROM messages "
+        "WHERE channel_id IN (SELECT id FROM channels WHERE server_id = ?))");
+    run("DELETE FROM messages      WHERE channel_id IN (SELECT id FROM channels WHERE server_id = ?)");
+    run("DELETE FROM pins          WHERE channel_id IN (SELECT id FROM channels WHERE server_id = ?)");
+    run("DELETE FROM channel_reads WHERE channel_id IN (SELECT id FROM channels WHERE server_id = ?)");
+    run("DELETE FROM channels      WHERE server_id = ?");
+    run("DELETE FROM custom_emojis WHERE server_id = ?");
+    run("DELETE FROM server_members WHERE server_id = ?");
+    run("DELETE FROM servers       WHERE id = ?");
+    utils::Logger::instance().info("[Database] Đã xóa server " + std::to_string(server_id));
+}
+
+void Database::delete_channel(uint32_t channel_id) {
+    std::lock_guard<std::mutex> lock(db_mutex_);
+    auto run = [&](const char* sql) {
+        SQLite::Statement q(db_, sql);
+        q.bind(1, channel_id);
+        q.exec();
+    };
+    run("DELETE FROM reactions   WHERE message_id IN (SELECT id FROM messages WHERE channel_id = ?)");
+    run("DELETE FROM attachments WHERE message_id IN (SELECT id FROM messages WHERE channel_id = ?)");
+    run("DELETE FROM mentions    WHERE message_id IN (SELECT id FROM messages WHERE channel_id = ?)");
+    run("DELETE FROM messages      WHERE channel_id = ?");
+    run("DELETE FROM pins          WHERE channel_id = ?");
+    run("DELETE FROM channel_reads WHERE channel_id = ?");
+    run("DELETE FROM channels      WHERE id = ?");
+    utils::Logger::instance().info("[Database] Đã xóa channel " + std::to_string(channel_id));
+}
+
 void Database::add_member(uint32_t server_id, uint32_t user_id) {
     std::lock_guard<std::mutex> lock(db_mutex_);
     SQLite::Statement q(db_,

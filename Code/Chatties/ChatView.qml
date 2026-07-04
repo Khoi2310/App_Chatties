@@ -240,6 +240,20 @@ Item {
     property string settingsAvatarUrlAtOpen: ""
     property int avatarRenderSize: 1024
 
+    // [Delete] Chủ server hiện tại? + trạng thái hộp thoại xác nhận xóa.
+    property bool isServerOwner:
+        (servers.length > currentServerIndex && currentServerIndex >= 0
+         && servers[currentServerIndex] && servers[currentServerIndex].owner_id !== undefined)
+        ? (servers[currentServerIndex].owner_id === userId) : false
+    // [Owner] user_id của chủ server hiện tại (0 nếu không có, vd server mặc định).
+    property int currentOwnerId:
+        (servers.length > currentServerIndex && currentServerIndex >= 0
+         && servers[currentServerIndex] && servers[currentServerIndex].owner_id !== undefined)
+        ? servers[currentServerIndex].owner_id : 0
+    property int    confirmMode: 0        // 0 = server, 1 = channel
+    property int    confirmTargetId: 0
+    property string confirmTargetName: ""
+
     // Đính kèm đang chờ gửi: [{url, kind, filename, size}]
     property var    pendingAttachments: []
 
@@ -270,6 +284,7 @@ Item {
         repeat: true
         onTriggered: chatClient.requestPresence(root.currentServerId)
     }
+
 
     function selectChannel(id) {
         currentChannelId = id
@@ -469,14 +484,19 @@ Item {
         }
     }
 
-    // Tự chọn channel đầu tiên khi danh sách server thay đổi.
+    // Tự chọn channel hợp lệ khi danh sách server thay đổi (kể cả sau khi xóa server/kênh).
     onServersChanged: {
-        if (servers.length > 0) {
-            if (currentServerIndex >= servers.length) currentServerIndex = 0
-            if (currentChannelId === 0
-                    && servers[currentServerIndex].channels.length > 0) {
-                selectChannel(servers[currentServerIndex].channels[0].id)
-            }
+        if (root.dmMode) return
+        if (servers.length === 0) { currentChannelId = 0; return }
+        if (currentServerIndex >= servers.length) currentServerIndex = 0
+        var chans = servers[currentServerIndex].channels
+        // Channel đang xem còn tồn tại không?
+        var found = false
+        for (var i = 0; i < chans.length; ++i)
+            if (chans[i].id === currentChannelId) found = true
+        if (!found) {
+            if (chans.length > 0) selectChannel(chans[0].id)
+            else { currentChannelId = 0; messageModel.clear() }
         }
     }
 
@@ -633,7 +653,28 @@ Item {
                             MouseArea {
                                 anchors.fill: parent
                                 cursorShape: Qt.PointingHandCursor
-                                onClicked: root.selectServer(index)
+                                acceptedButtons: Qt.LeftButton | Qt.RightButton
+                                // Trái: chọn server — Phải: menu xóa (chỉ chủ server).
+                                onClicked: (mouse) => {
+                                    if (mouse.button === Qt.RightButton) {
+                                        if (modelData.owner_id === root.userId)
+                                            serverCtxMenu.popup()
+                                    } else {
+                                        root.selectServer(index)
+                                    }
+                                }
+                                Menu {
+                                    id: serverCtxMenu
+                                    MenuItem {
+                                        text: qsTr("Delete server")
+                                        onTriggered: {
+                                            root.confirmMode = 0
+                                            root.confirmTargetId = modelData.id
+                                            root.confirmTargetName = modelData.name
+                                            confirmDeleteDialog.open()
+                                        }
+                                    }
+                                }
                             }
                         }
                     }
@@ -808,7 +849,27 @@ Item {
                         MouseArea {
                             anchors.fill: parent
                             cursorShape: Qt.PointingHandCursor
-                            onClicked: root.selectChannel(modelData.id)
+                            acceptedButtons: Qt.LeftButton | Qt.RightButton
+                            // Trái: chọn kênh — Phải: menu xóa (chỉ chủ server).
+                            onClicked: (mouse) => {
+                                if (mouse.button === Qt.RightButton) {
+                                    if (root.isServerOwner) chanCtxMenu.popup()
+                                } else {
+                                    root.selectChannel(modelData.id)
+                                }
+                            }
+                            Menu {
+                                id: chanCtxMenu
+                                MenuItem {
+                                    text: qsTr("Delete channel")
+                                    onTriggered: {
+                                        root.confirmMode = 1
+                                        root.confirmTargetId = modelData.id
+                                        root.confirmTargetName = modelData.name
+                                        confirmDeleteDialog.open()
+                                    }
+                                }
+                            }
                         }
                     }
                 }
@@ -1344,6 +1405,14 @@ Item {
                                     color: Theme.accent
                                     font.bold: true
                                     font.pixelSize: 12
+                                }
+                                // [Owner] Vương miện cạnh tên chủ server.
+                                Label {
+                                    text: "👑"
+                                    font.pixelSize: 11
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    visible: !root.dmMode && root.currentOwnerId !== 0
+                                             && msgItem.mAuthor === root.currentOwnerId
                                 }
                                 Label {
                                     visible: !msgItem.mGrouped
@@ -2438,8 +2507,10 @@ Item {
                                 anchors.verticalCenter: parent.verticalCenter
                                 spacing: 0
                                 Label {
-                                    text: (modelData.display_name && modelData.display_name.length > 0)
-                                          ? modelData.display_name : modelData.username
+                                    text: ((modelData.display_name && modelData.display_name.length > 0)
+                                           ? modelData.display_name : modelData.username)
+                                          + (root.currentOwnerId !== 0
+                                             && modelData.user_id === root.currentOwnerId ? "  👑" : "")
                                     color: Theme.textPrimary
                                     font.pixelSize: 13
                                     elide: Text.ElideRight
@@ -3078,6 +3149,38 @@ Item {
                         }
                     }
                 }
+            }
+        }
+    }
+
+    // [Delete] Hộp thoại xác nhận xóa server / kênh.
+    Dialog {
+        id: confirmDeleteDialog
+        title: qsTr("Confirm delete")
+        anchors.centerIn: parent
+        modal: true
+        width: 360
+        standardButtons: Dialog.Cancel | Dialog.Ok
+        onAccepted: {
+            if (root.confirmMode === 0)
+                chatClient.deleteServer(root.confirmTargetId)
+            else
+                chatClient.deleteChannel(root.confirmTargetId)
+            root.confirmTargetId = 0
+            root.confirmTargetName = ""
+        }
+        contentItem: ColumnLayout {
+            spacing: 8
+            Label {
+                Layout.fillWidth: true
+                Layout.margins: 6
+                wrapMode: Text.WordWrap
+                color: Theme.textPrimary
+                text: root.confirmMode === 0
+                      ? (qsTr("Delete server “") + root.confirmTargetName
+                         + qsTr("”?\n\nThis permanently removes ALL its channels and messages. This cannot be undone."))
+                      : (qsTr("Delete channel “# ") + root.confirmTargetName
+                         + qsTr("”?\n\nAll of its messages will be permanently removed. This cannot be undone."))
             }
         }
     }

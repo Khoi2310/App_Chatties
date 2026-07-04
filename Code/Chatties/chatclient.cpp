@@ -325,6 +325,16 @@ void ChatClient::createChannel(int serverId, const QString& name) {
     sendOp("channel.create", data);
 }
 
+void ChatClient::deleteServer(int serverId) {
+    QJsonObject data; data["server_id"] = serverId;
+    sendOp("server.delete", data);
+}
+
+void ChatClient::deleteChannel(int channelId) {
+    QJsonObject data; data["channel_id"] = channelId;
+    sendOp("channel.delete", data);
+}
+
 void ChatClient::selectChannel(int channelId) {
     currentChannelId_ = channelId;
     QJsonObject data;
