@@ -153,6 +153,10 @@ void ChatClient::uploadAttachment(const QString& localPathOrUrl) {
     else if (suffix == "jpg" || suffix == "jpeg") { contentType = "image/jpeg"; kind = "image"; }
     else if (suffix == "gif")               { contentType = "image/gif";  kind = "gif"; }
     else if (suffix == "webp")              { contentType = "image/webp"; kind = "image"; }
+    else if (suffix == "mp3")               { contentType = "audio/mpeg"; kind = "audio"; }
+    else if (suffix == "wav")               { contentType = "audio/wav";  kind = "audio"; }
+    else if (suffix == "ogg" || suffix == "oga") { contentType = "audio/ogg"; kind = "audio"; }
+    else if (suffix == "m4a" || suffix == "aac") { contentType = "audio/mp4"; kind = "audio"; }
     else {
         // Mọi loại file khác: tải lên như file đính kèm thông thường.
         contentType = "application/octet-stream";

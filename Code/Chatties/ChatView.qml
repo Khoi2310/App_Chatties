@@ -1,6 +1,7 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
+import QtMultimedia
 import Chatties
 // import Qt5Compat.GraphicalEffects
 
@@ -1232,9 +1233,18 @@ Item {
                 clip: true
                 spacing: 2
                 model: messageModel
+                bottomMargin: 6
 
                 // Không nảy khi cuộn tới biên.
                 boundsBehavior: Flickable.StopAtBounds
+
+                // [Scroll] Ghim đáy: khi có tin mới hoặc khi đính kèm (ảnh/audio)
+                // tải xong làm nội dung cao thêm, tự cuộn xuống đáy — trừ khi
+                // người dùng đang cuộn lên xem lịch sử.
+                property bool pinToBottom: true
+                onContentHeightChanged: if (pinToBottom) Qt.callLater(positionViewAtEnd)
+                onMovementStarted: pinToBottom = false
+                onMovementEnded: pinToBottom = atYEnd
 
                 // Thanh cuộn mảnh, tối giản bên phải.
                 ScrollBar.vertical: ScrollBar {
@@ -1525,7 +1535,8 @@ Item {
                                     model: msgItem.mAttachments
                                     Loader {
                                         sourceComponent: modelData.kind === "image" ? imageAtt
-                                                         : (modelData.kind === "gif" ? gifAtt : fileAtt)
+                                                         : (modelData.kind === "gif" ? gifAtt
+                                                            : (modelData.kind === "audio" ? audioAtt : fileAtt))
                                         property var att: modelData
 
                                         Component {
@@ -1611,6 +1622,83 @@ Item {
                                                     anchors.fill: parent
                                                     cursorShape: Qt.PointingHandCursor
                                                     onClicked: Qt.openUrlExternally(att.url)
+                                                }
+                                            }
+                                        }
+
+                                        // [Voice] Trình phát audio inline (.mp3/.wav/.ogg/.m4a)
+                                        Component {
+                                            id: audioAtt
+                                            Rectangle {
+                                                id: audioRoot
+                                                width: 280; height: 64; radius: 10
+                                                clip: true
+                                                color: Theme.inputBg
+
+                                                function fmt(ms) {
+                                                    if (ms <= 0 || isNaN(ms)) return "0:00"
+                                                    var s = Math.floor(ms / 1000)
+                                                    return Math.floor(s / 60) + ":" + ("0" + (s % 60)).slice(-2)
+                                                }
+
+                                                MediaPlayer {
+                                                    id: player
+                                                    source: att.url
+                                                    audioOutput: AudioOutput { id: audioOut }
+                                                }
+
+                                                Row {
+                                                    anchors.fill: parent
+                                                    anchors.margins: 8
+                                                    spacing: 10
+
+                                                    // Play / pause
+                                                    Rectangle {
+                                                        width: 34; height: 34; radius: 17
+                                                        color: Theme.accent
+                                                        anchors.verticalCenter: parent.verticalCenter
+                                                        Label {
+                                                            anchors.centerIn: parent
+                                                            text: player.playbackState === MediaPlayer.PlayingState ? "⏸" : "▶"
+                                                            color: "white"; font.pixelSize: 15
+                                                        }
+                                                        MouseArea {
+                                                            anchors.fill: parent
+                                                            cursorShape: Qt.PointingHandCursor
+                                                            onClicked: player.playbackState === MediaPlayer.PlayingState
+                                                                       ? player.pause() : player.play()
+                                                        }
+                                                    }
+
+                                                    // Seek bar + thời gian / tên file
+                                                    Column {
+                                                        anchors.verticalCenter: parent.verticalCenter
+                                                        width: parent.width - 44
+                                                        spacing: 2
+                                                        Slider {
+                                                            width: parent.width
+                                                            height: 22
+                                                            from: 0
+                                                            to: player.duration > 0 ? player.duration : 1
+                                                            value: player.position
+                                                            onMoved: player.position = value
+                                                        }
+                                                        Row {
+                                                            width: parent.width
+                                                            Label {
+                                                                text: audioRoot.fmt(player.position)
+                                                                      + " / " + audioRoot.fmt(player.duration)
+                                                                color: Theme.textMuted; font.pixelSize: 10
+                                                            }
+                                                            Item { width: 8; height: 1 }
+                                                            Label {
+                                                                text: att.filename
+                                                                color: Theme.textMuted; font.pixelSize: 10
+                                                                elide: Text.ElideRight
+                                                                width: parent.width - 90
+                                                            }
+                                                        }
+                                                    }
                                                 }
                                             }
                                         }
@@ -1971,7 +2059,7 @@ Item {
                     }             
                 }
 
-                onCountChanged: positionViewAtEnd()
+                onCountChanged: { pinToBottom = true; Qt.callLater(positionViewAtEnd) }
             }
 
             // Banner "đang trả lời"

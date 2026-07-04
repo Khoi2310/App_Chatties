@@ -57,6 +57,10 @@ std::string HttpMediaServer::extFromContentType(const std::string& ct) {
     if (ct == "image/gif")  return ".gif";
     if (ct == "image/webp") return ".webp";
     if (ct == "video/mp4")  return ".mp4";
+    if (ct == "audio/mpeg") return ".mp3";
+    if (ct == "audio/wav" || ct == "audio/x-wav") return ".wav";
+    if (ct == "audio/ogg") return ".ogg";
+    if (ct == "audio/mp4" || ct == "audio/aac") return ".m4a";
     return "";   // không nhận ra từ content-type
 }
 
@@ -214,7 +218,8 @@ void HttpMediaServer::setupRoutes() {
         }
         const std::string ct = req.get_header_value("Content-Type");
         std::string ext = extFromContentType(ct);
-        if (ext.empty() || ext == ".mp4") {   // chỉ chấp nhận PNG/JPG/GIF/WEBP
+        // chỉ chấp nhận PNG/JPG/GIF/WEBP (loại video/audio ra khỏi emoji)
+        if (ext != ".png" && ext != ".jpg" && ext != ".gif" && ext != ".webp") {
             res.status = 415;
             res.set_content(nlohmann::json{{"error", "emoji must be a PNG/JPG/GIF/WEBP image"}}.dump(),
                             "application/json");

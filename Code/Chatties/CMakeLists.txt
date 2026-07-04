@@ -7,7 +7,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 add_compile_definitions(_WIN32_WINNT=0x0601)
 
 # Qt Quick client. Qt is found via your Qt kit / CMAKE_PREFIX_PATH (not vcpkg).
-find_package(Qt6 REQUIRED COMPONENTS Core Gui Qml Quick QuickControls2 Widgets Network)
+find_package(Qt6 REQUIRED COMPONENTS Core Gui Qml Quick QuickControls2 Widgets Network Multimedia)
 qt_standard_project_setup(REQUIRES 6.5)
 
 qt_add_executable(Chatties
@@ -51,4 +51,5 @@ target_link_libraries(Chatties PRIVATE
     Qt6::QuickControls2
     Qt6::Widgets
     Qt6::Network
+    Qt6::Multimedia
 )
