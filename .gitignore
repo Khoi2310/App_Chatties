@@ -76,3 +76,6 @@ server.log
 
 # Bỏ qua toàn bộ nội dung trong thư mục lưu trữ media
 media_storage/*
+
+# Bỏ chặn file cấu hình Icon cho Windows
+!chatties.rc

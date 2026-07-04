@@ -16,6 +16,8 @@ qt_add_executable(Chatties
     chatclient.h
     messagemodel.cpp
     messagemodel.h
+    chatties.rc
+    resources.qrc
 )
 
 # Auto-bundle every PNG dropped into images/presets/ (reconfigure on folder changes).

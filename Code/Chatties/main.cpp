@@ -1,4 +1,5 @@
 #include <QApplication>
+#include <QIcon>
 #include <QQmlApplicationEngine>
 #include <QQmlContext>
 #include <QQuickStyle>
@@ -14,6 +15,8 @@ int main(int argc, char* argv[])
     QApplication::setAttribute(Qt::AA_EnableHighDpiScaling, true);
 
     QApplication app(argc, argv);
+
+    app.setWindowIcon(QIcon(":/app_icon.png"));
 
     // [Auth] Định danh cho QSettings (nhớ đăng nhập).
     QCoreApplication::setOrganizationName("Chatties");

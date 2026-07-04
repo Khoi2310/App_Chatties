@@ -648,7 +648,18 @@ Item {
                     color: Theme.inputBg
                     Label {
                         anchors.centerIn: parent
-                        text: "+"; color: Theme.accent; font.pixelSize: 24
+                        
+                        // 🕹️ BỘ ĐIỀU KHIỂN TỌA ĐỘ TUYỆT ĐỐI (JOYSTICK)
+                        // Nếu vẫn lệch, bạn chỉ cần thay đổi số ở đây (tính bằng pixel)
+                        anchors.verticalCenterOffset: -2   // Số âm: đẩy lên trên | Số dương: đẩy xuống dưới
+                        anchors.horizontalCenterOffset: -1 // Số âm: đẩy qua trái | Số dương: đẩy qua phải
+                        
+                        text: "+"
+                        color: Theme.accent
+                        font.pixelSize: 32
+                        font.weight: Font.Light
+                        horizontalAlignment: Text.AlignHCenter
+                        verticalAlignment: Text.AlignVCenter
                     }
                     MouseArea {
                         anchors.fill: parent
@@ -722,6 +733,26 @@ Item {
                     Button {
                         text: "+"
                         enabled: root.currentServerId !== 0
+                        Layout.preferredWidth: 26
+                        Layout.preferredHeight: 26
+                        
+                        // Định dạng lại nội dung dấu cộng bên trong
+                        contentItem: Text {
+                            text: parent.text
+                            color: Theme.textPrimary
+                            font.pixelSize: 20
+                            horizontalAlignment: Text.AlignHCenter
+                            verticalAlignment: Text.AlignVCenter
+                            anchors.centerIn: parent
+                            anchors.verticalCenterOffset: -1
+                        }
+                        
+                        // Bỏ viền mặc định, làm nền trong suốt (chỉ hiện màu khi rê chuột)
+                        background: Rectangle {
+                            color: parent.hovered ? Theme.inputBg : "transparent"
+                            radius: 4
+                        }
+                        
                         onClicked: addChannelDialog.open()
                     }
                 }
@@ -1983,10 +2014,16 @@ Item {
                             opacity: root.currentChannelId !== 0 ? 1.0 : 0.4
                             Label {
                                 anchors.centerIn: parent
+                                
+                                // 🕹️ Tinh chỉnh quang học: Đẩy nhẹ lên trên để cân bằng với chữ "M"
+                                anchors.verticalCenterOffset: -2.5  // Dùng số thập phân để nhích lên đúng "1 tí xíu"
+                                
                                 text: "+"
                                 color: plusArea.containsMouse ? Theme.textPrimary : Theme.textMuted
-                                font.pixelSize: 24
-                                font.bold: true
+                                font.pixelSize: 26
+                                font.weight: Font.Normal
+                                horizontalAlignment: Text.AlignHCenter
+                                verticalAlignment: Text.AlignVCenter
                             }
                             MouseArea {
                                 id: plusArea

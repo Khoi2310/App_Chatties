@@ -90,3 +90,6 @@ CMakeLists.txt.user*
 *.db-shm
 *.db-wal
 media_storage/
+
+# Bỏ chặn file cấu hình Icon cho Windows
+!chatties.rc
